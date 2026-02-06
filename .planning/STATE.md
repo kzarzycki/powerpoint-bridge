@@ -5,46 +5,47 @@
 See: .planning/PROJECT.md (updated 2026-02-06)
 
 **Core value:** Claude Code can see what's on a slide and make precise, iterative modifications to a live presentation
-**Current focus:** Phase 1 - Secure Server
+**Current focus:** Phase 1 complete, ready for Phase 2
 
 ## Current Position
 
-Phase: 1 of 4 (Secure Server)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-06 — Completed 01-01-PLAN.md
+Phase: 1 of 4 (Secure Server) — COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-06 — Completed 01-02-PLAN.md
 
-Progress: [█░░░░░░░░░] 14%
+Progress: [███░░░░░░░] 28%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 5 minutes
-- Total execution time: 0.08 hours
+- Total plans completed: 2
+- Average duration: 4 minutes
+- Total execution time: 0.13 hours
 
 ## Accumulated Context
 
 ### Decisions
-
-Decisions are logged in PROJECT.md Key Decisions table.
 
 | ID | Decision | Plan | Rationale |
 |----|----------|------|-----------|
 | KD-0101-1 | Node 24 native TS execution (no build step) | 01-01 | tsc for type-checking only |
 | KD-0101-2 | erasableSyntaxOnly in tsconfig | 01-01 | Node 24 type stripping cannot handle enums |
 | KD-0101-3 | Explicit mkcert cert-file/key-file flags | 01-01 | Default naming uses localhost+2.pem due to 3 SANs |
+| KD-0102-1 | Port 8443 for HTTPS+WSS | 01-02 | Standard alternative HTTPS port |
+| KD-0102-2 | Single server for HTTPS+WSS | 01-02 | ws library shares port via { server } option |
+| KD-0102-3 | Path traversal protection | 01-02 | resolve + startsWith prevents directory escape |
 
 ### Pending Todos
 
-1. User must run `mkcert -install` in a terminal (requires macOS password) to trust the CA in Keychain before Plan 01-02 Safari verification
+None.
 
 ### Blockers/Concerns
 
-1. mkcert CA not yet trusted in macOS Keychain - requires interactive terminal with password entry. Non-blocking for code, blocking for browser/WKWebView trust verification.
+None.
 
 ## Session Continuity
 
-Last session: 2026-02-06T20:40:20Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-02-06
+Stopped at: Phase 1 complete, verified in browser
 Resume file: None

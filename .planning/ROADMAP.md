@@ -10,7 +10,7 @@ This roadmap delivers a live PowerPoint editing bridge in four phases, each buil
 - Integer phases (1, 2, 3, 4): Planned milestone work
 - Decimal phases (e.g., 2.1): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Secure Server** - TLS certs, HTTPS file serving, and WSS endpoint on localhost
+- [x] **Phase 1: Secure Server** - TLS certs, HTTPS file serving, and WSS endpoint on localhost
 - [ ] **Phase 2: PowerPoint Add-in** - Office.js taskpane loads in PowerPoint and connects to bridge server
 - [ ] **Phase 3: Command Execution** - JSON protocol and arbitrary Office.js code execution over WebSocket
 - [ ] **Phase 4: MCP Tools** - Stdio MCP server with get_presentation, get_slide, and execute_officejs tools
@@ -29,7 +29,7 @@ This roadmap delivers a live PowerPoint editing bridge in four phases, each buil
 
 Plans:
 - [x] 01-01-PLAN.md -- Project foundation: config files, npm dependencies, TLS certificates, placeholder page
-- [ ] 01-02-PLAN.md -- HTTPS + WSS server with static file serving and Safari verification
+- [x] 01-02-PLAN.md -- HTTPS + WSS server with static file serving and browser verification
 
 ### Phase 2: PowerPoint Add-in
 **Goal**: An Office.js add-in loads inside PowerPoint's taskpane and maintains a live WebSocket connection to the bridge server
@@ -82,7 +82,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Secure Server | 1/2 | In progress | - |
+| 1. Secure Server | 2/2 | Complete | 2026-02-06 |
 | 2. PowerPoint Add-in | 0/2 | Not started | - |
 | 3. Command Execution | 0/1 | Not started | - |
 | 4. MCP Tools | 0/2 | Not started | - |
