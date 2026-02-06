@@ -28,7 +28,7 @@ This roadmap delivers a live PowerPoint editing bridge in four phases, each buil
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- Project foundation: config files, npm dependencies, TLS certificates, placeholder page
+- [x] 01-01-PLAN.md -- Project foundation: config files, npm dependencies, TLS certificates, placeholder page
 - [ ] 01-02-PLAN.md -- HTTPS + WSS server with static file serving and Safari verification
 
 ### Phase 2: PowerPoint Add-in
@@ -82,7 +82,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Secure Server | 0/2 | Planned | - |
+| 1. Secure Server | 1/2 | In progress | - |
 | 2. PowerPoint Add-in | 0/2 | Not started | - |
 | 3. Command Execution | 0/1 | Not started | - |
 | 4. MCP Tools | 0/2 | Not started | - |
