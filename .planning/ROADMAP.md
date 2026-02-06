@@ -25,11 +25,11 @@ This roadmap delivers a live PowerPoint editing bridge in four phases, each buil
   1. Running `mkcert localhost` generates certificate files and they are trusted by macOS Keychain (no manual trust steps needed)
   2. Visiting `https://localhost:PORT` in Safari shows the add-in page without any certificate warning
   3. A test WebSocket client can connect to `wss://localhost:PORT` and receive a response
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TLS certificate generation and trust setup
-- [ ] 01-02: Node.js HTTPS + WSS server
+- [ ] 01-01-PLAN.md -- Project foundation: config files, npm dependencies, TLS certificates, placeholder page
+- [ ] 01-02-PLAN.md -- HTTPS + WSS server with static file serving and Safari verification
 
 ### Phase 2: PowerPoint Add-in
 **Goal**: An Office.js add-in loads inside PowerPoint's taskpane and maintains a live WebSocket connection to the bridge server
@@ -82,7 +82,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Secure Server | 0/2 | Not started | - |
+| 1. Secure Server | 0/2 | Planned | - |
 | 2. PowerPoint Add-in | 0/2 | Not started | - |
 | 3. Command Execution | 0/1 | Not started | - |
 | 4. MCP Tools | 0/2 | Not started | - |
