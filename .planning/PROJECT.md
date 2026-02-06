@@ -21,25 +21,20 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 - [ ] Node.js bridge server serving add-in files over HTTPS, running WSS server, and exposing MCP tools via stdio
 - [ ] Manifest XML for sideloading into PowerPoint on macOS
 - [ ] JSON command/response protocol with request IDs for async matching
-- [ ] MCP tools: create presentations, add/delete slides
-- [ ] MCP tools: add geometric shapes, lines, text boxes with position/size
-- [ ] MCP tools: set text content and font color on shapes
-- [ ] MCP tools: set solid fill colors on shapes
-- [ ] MCP tools: read slide structure (count, order)
-- [ ] MCP tools: read shape list per slide with text content
-- [ ] MCP tools: read shape positions, sizes, and formatting details
+- [ ] MCP tool: `get_presentation` — returns structured JSON of all slides with shape summaries
+- [ ] MCP tool: `get_slide` — returns detailed info for one slide (shapes, text, positions, sizes, colors)
+- [ ] MCP tool: `execute_officejs` — sends arbitrary Office.js code to add-in for execution, returns result
+- [ ] Add-in executes arbitrary Office.js code in PowerPoint.run() context and returns results
 - [ ] Connection status visible in add-in taskpane
-- [ ] Reconnection logic when WebSocket disconnects
 
 ### Out of Scope
 
-- Image insertion — Office.js has no direct image API; workaround via Base64 slide import deferred
+- Image insertion — Office.js has no direct image API; Base64 slide import workaround is complex
 - Chart creation — not exposed in Office.js API
 - Animations/transitions — not in stable APIs
 - Gradient fills, effects, shadows — only solid fills supported
 - Slide master/theme editing — not available in API
-- Tables — deferred to v2 iteration
-- Shape grouping/ungrouping — deferred to v2 iteration
+- Auto-reconnection / command queuing — reload add-in if connection drops (v2)
 - npm packaging / public release — personal tool for now, may share later
 - OAuth/Microsoft Store submission — sideloading only
 
@@ -73,6 +68,7 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 | TypeScript for add-in and server | Office.js has good TS types, catches API misuse at compile time | — Pending |
 | Sideloading only (no Store submission) | Development use case, no distribution needed | — Pending |
 | v1 = Bridge + MCP with read/write tools, iterate from usage | Ship working co-development workflow, expand tools based on real needs | — Pending |
+| 3-tool architecture: get_presentation + get_slide + execute_officejs | Maximum capability with minimum tools; Claude writes Office.js directly instead of mapping every operation to a separate MCP tool | — Pending |
 
 ---
-*Last updated: 2026-02-06 after initialization*
+*Last updated: 2026-02-06 after tool architecture revision*
