@@ -64,25 +64,25 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | — | Pending |
-| INFRA-02 | — | Pending |
-| INFRA-03 | — | Pending |
-| INFRA-04 | — | Pending |
-| INFRA-05 | — | Pending |
-| ADDIN-01 | — | Pending |
-| ADDIN-02 | — | Pending |
-| ADDIN-03 | — | Pending |
-| ADDIN-04 | — | Pending |
-| ADDIN-05 | — | Pending |
-| TOOL-01 | — | Pending |
-| TOOL-02 | — | Pending |
-| TOOL-03 | — | Pending |
+| INFRA-01 | Phase 1: Secure Server | Pending |
+| INFRA-02 | Phase 1: Secure Server | Pending |
+| INFRA-03 | Phase 1: Secure Server | Pending |
+| INFRA-04 | Phase 4: MCP Tools | Pending |
+| INFRA-05 | Phase 3: Command Execution | Pending |
+| ADDIN-01 | Phase 2: PowerPoint Add-in | Pending |
+| ADDIN-02 | Phase 2: PowerPoint Add-in | Pending |
+| ADDIN-03 | Phase 2: PowerPoint Add-in | Pending |
+| ADDIN-04 | Phase 3: Command Execution | Pending |
+| ADDIN-05 | Phase 2: PowerPoint Add-in | Pending |
+| TOOL-01 | Phase 4: MCP Tools | Pending |
+| TOOL-02 | Phase 4: MCP Tools | Pending |
+| TOOL-03 | Phase 4: MCP Tools | Pending |
 
 **Coverage:**
 - v1 requirements: 13 total
-- Mapped to phases: 0
-- Unmapped: 13 (pending roadmap creation)
+- Mapped to phases: 13
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-06*
-*Last updated: 2026-02-06 after tool architecture revision*
+*Last updated: 2026-02-06 — traceability updated with phase mappings*
