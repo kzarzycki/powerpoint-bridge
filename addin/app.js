@@ -5,6 +5,7 @@ var reconnectAttempt = 0;
 var BASE_DELAY = 500;
 var MAX_DELAY = 30000;
 var officeReady = false;
+var AsyncFunction = (async function(){}).constructor;
 
 /* Office.js initialization */
 Office.onReady(function(info) {
@@ -41,6 +42,7 @@ function connect() {
     reconnectAttempt = 0;
     updateStatus('connected');
     console.log('WebSocket connected');
+    ws.send(JSON.stringify({ type: 'ready' }));
   };
 
   ws.onclose = function() {
@@ -80,7 +82,54 @@ function updateStatus(state) {
   el.className = 'status ' + state;
 }
 
-/* Command handler stub — Phase 3 implements real execution */
+/* Command handler — dispatches actions to execution functions */
 function handleCommand(message) {
-  console.log('Received command:', message);
+  if (message.type !== 'command' || !message.id) return;
+
+  if (message.action === 'executeCode') {
+    executeCode(message.params.code, message.id);
+  } else {
+    sendError(message.id, { message: 'Unknown action: ' + message.action });
+  }
+}
+
+/* Execute a code string inside PowerPoint.run() via AsyncFunction */
+function executeCode(code, requestId) {
+  if (typeof PowerPoint === 'undefined') {
+    sendError(requestId, {
+      message: 'PowerPoint not available — running in standalone mode',
+      code: 'NotInOffice'
+    });
+    return;
+  }
+
+  PowerPoint.run(function(context) {
+    var fn = new AsyncFunction('context', 'PowerPoint', code);
+    return fn(context, PowerPoint);
+  }).then(function(result) {
+    sendResponse(requestId, result === undefined ? null : result);
+  }).catch(function(error) {
+    var errorObj = {
+      message: error.message || String(error),
+      code: error.code || 'UnknownError'
+    };
+    if (error.debugInfo) {
+      errorObj.debugInfo = error.debugInfo;
+    }
+    sendError(requestId, errorObj);
+  });
+}
+
+/* Send a success response to the server */
+function sendResponse(id, data) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'response', id: id, data: data }));
+  }
+}
+
+/* Send an error response to the server */
+function sendError(id, error) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'error', id: id, error: error }));
+  }
 }
