@@ -1,6 +1,7 @@
 import { createServer } from 'node:https';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, extname, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { WebSocket } from 'ws';
@@ -48,12 +49,64 @@ function getMimeType(filePath: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Command infrastructure
+// ---------------------------------------------------------------------------
+
+interface PendingRequest {
+  resolve: (data: unknown) => void;
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+const pendingRequests = new Map<string, PendingRequest>();
+const COMMAND_TIMEOUT = 30_000;
+let addinClient: WebSocket | null = null;
+let addinReady = false;
+
+function sendCommand(action: string, params: Record<string, unknown>): Promise<unknown> {
+  if (!addinClient || addinClient.readyState !== 1) {
+    return Promise.reject(new Error('Add-in not connected'));
+  }
+  if (!addinReady) {
+    return Promise.reject(new Error('Add-in not ready'));
+  }
+
+  const id = randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingRequests.delete(id);
+      reject(new Error(`Command timed out after ${COMMAND_TIMEOUT}ms`));
+    }, COMMAND_TIMEOUT);
+
+    pendingRequests.set(id, { resolve, reject, timer });
+    addinClient!.send(JSON.stringify({ type: 'command', id, action, params }));
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Static file handler
 // ---------------------------------------------------------------------------
 
 function serveStatic(req: IncomingMessage, res: ServerResponse): void {
   // Strip query string — Office.js/WKWebView appends ?_host_Info=... params
   const rawUrl = (req.url ?? '/').split('?')[0];
+
+  // API: test endpoint — sends a slide count command to the add-in
+  if (rawUrl === '/api/test') {
+    sendCommand('executeCode', {
+      code: 'var c = context.presentation.slides.getCount(); await context.sync(); return c.value;',
+    })
+      .then((result) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ slideCount: result }));
+      })
+      .catch((err: Error) => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      });
+    return;
+  }
+
   const urlPath = rawUrl === '/' ? '/index.html' : rawUrl;
 
   const filePath = resolve(join(STATIC_DIR, urlPath));
@@ -92,13 +145,45 @@ const server = createServer({ cert, key }, serveStatic);
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws: WebSocket) => {
+  addinClient = ws;
   console.log('WebSocket client connected');
 
   ws.on('message', (data: Buffer) => {
-    console.log('WebSocket message:', data.toString());
+    let msg: { type?: string; id?: string; data?: unknown; error?: { message?: string } };
+    try {
+      msg = JSON.parse(data.toString());
+    } catch {
+      console.error('Invalid JSON from add-in:', data.toString());
+      return;
+    }
+
+    if ((msg.type === 'response' || msg.type === 'error') && msg.id) {
+      const pending = pendingRequests.get(msg.id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingRequests.delete(msg.id);
+        if (msg.type === 'response') {
+          pending.resolve(msg.data);
+        } else {
+          pending.reject(new Error(msg.error?.message || 'Command failed'));
+        }
+      }
+    }
+
+    if (msg.type === 'ready') {
+      addinReady = true;
+      console.log('Add-in ready to receive commands');
+    }
   });
 
   ws.on('close', () => {
+    for (const [id, pending] of pendingRequests) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('Add-in disconnected'));
+    }
+    pendingRequests.clear();
+    addinClient = null;
+    addinReady = false;
     console.log('WebSocket client disconnected');
   });
 
