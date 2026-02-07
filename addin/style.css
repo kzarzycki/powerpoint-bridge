@@ -1,0 +1,72 @@
+/* PowerPoint Bridge Taskpane Styles */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 16px 16px; /* top padding avoids macOS personality menu (34x32px) */
+  background: #f5f5f5;
+  color: #333;
+}
+
+h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+/* Status indicator with colored dot */
+.status {
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Connected: green */
+.status.connected {
+  color: #107c10;
+  background: #dff6dd;
+}
+
+.status.connected::before {
+  background: #107c10;
+}
+
+/* Disconnected: red */
+.status.disconnected {
+  color: #a80000;
+  background: #fde7e9;
+}
+
+.status.disconnected::before {
+  background: #a80000;
+}
+
+/* Connecting: yellow/amber */
+.status.connecting {
+  color: #797600;
+  background: #fff4ce;
+}
+
+.status.connecting::before {
+  background: #c19c00;
+}
