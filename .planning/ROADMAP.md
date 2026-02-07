@@ -54,10 +54,10 @@ Plans:
   1. Sending a JSON command via WebSocket triggers Office.js code execution inside PowerPoint
   2. The result (or error) returns as a JSON response with the matching request ID
   3. A test command (e.g., get slide count) returns correct data from the live, open presentation
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 03-01: JSON command protocol and Office.js execution engine
+- [ ] 03-01-PLAN.md -- JSON command protocol and Office.js execution engine
 
 ### Phase 4: MCP Tools
 **Goal**: Claude Code discovers and uses MCP tools to read presentation structure, inspect individual slides, and execute arbitrary Office.js modifications
