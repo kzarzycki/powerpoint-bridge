@@ -52,7 +52,9 @@ function getMimeType(filePath: string): string {
 // ---------------------------------------------------------------------------
 
 function serveStatic(req: IncomingMessage, res: ServerResponse): void {
-  const urlPath = req.url === '/' ? '/index.html' : (req.url ?? '/index.html');
+  // Strip query string — Office.js/WKWebView appends ?_host_Info=... params
+  const rawUrl = (req.url ?? '/').split('?')[0];
+  const urlPath = rawUrl === '/' ? '/index.html' : rawUrl;
 
   const filePath = resolve(join(STATIC_DIR, urlPath));
 
