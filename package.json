@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node server/index.ts",
     "typecheck": "tsc --noEmit",
-    "setup-certs": "mkdir -p certs && mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem localhost 127.0.0.1 ::1"
+    "setup-certs": "mkdir -p certs && mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem localhost 127.0.0.1 ::1",
+    "sideload": "mkdir -p ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef && cp addin/manifest.xml ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/"
   },
   "dependencies": {
     "ws": "^8.19.0"
