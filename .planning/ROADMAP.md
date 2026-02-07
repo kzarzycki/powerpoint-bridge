@@ -40,11 +40,11 @@ Plans:
   2. Clicking the add-in in PowerPoint's ribbon opens an HTML taskpane
   3. The taskpane shows "Connected" when the bridge server is running
   4. The taskpane shows "Disconnected" when the bridge server is stopped
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: Add-in HTML, Office.js initialization, and manifest XML
-- [ ] 02-02: WSS client connection and status display in taskpane
+- [ ] 02-01-PLAN.md -- Add-in HTML, Office.js initialization, manifest XML, and icon assets
+- [ ] 02-02-PLAN.md -- WSS client with reconnection and live PowerPoint verification
 
 ### Phase 3: Command Execution
 **Goal**: Commands sent over WebSocket execute as Office.js code inside PowerPoint and return structured results
