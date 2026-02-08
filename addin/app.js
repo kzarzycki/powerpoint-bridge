@@ -42,7 +42,13 @@ function connect() {
     reconnectAttempt = 0;
     updateStatus('connected');
     console.log('WebSocket connected');
-    ws.send(JSON.stringify({ type: 'ready' }));
+    var documentUrl = null;
+    try {
+      documentUrl = Office.context.document.url || null;
+    } catch (e) {
+      // Not available in standalone/browser mode
+    }
+    ws.send(JSON.stringify({ type: 'ready', documentUrl: documentUrl }));
   };
 
   ws.onclose = function() {
