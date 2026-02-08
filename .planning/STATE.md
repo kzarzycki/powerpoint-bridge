@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-06)
 
 **Core value:** Claude Code can see what's on a slide and make precise, iterative modifications to a live presentation
-**Current focus:** Phase 2 complete, ready for Phase 3
+**Current focus:** Phase 3 complete, ready for Phase 4
 
 ## Current Position
 
-Phase: 2 of 4 (PowerPoint Add-in) — COMPLETE
-Plan: 2 of 2 in current phase
+Phase: 3 of 4 (Command Execution) — COMPLETE
+Plan: 1 of 1 in current phase
 Status: Phase complete
-Last activity: 2026-02-07 — Completed 02-02-PLAN.md
+Last activity: 2026-02-08 — Completed 03-01-PLAN.md
 
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 3.5 minutes
-- Total execution time: 0.23 hours
+- Total plans completed: 5
+- Average duration: ~5 minutes
+- Total execution time: ~0.4 hours
 
 ## Accumulated Context
 
@@ -38,6 +38,9 @@ Progress: [█████░░░░░] 50%
 | KD-0201-1 | CSS class-based status indicators | 02-01 | app.js toggles classes; pseudo-element dots avoid extra DOM |
 | KD-0202-1 | Plain JS with function declarations | 02-02 | WKWebView compatibility safety in Office.js taskpane |
 | KD-0202-2 | 3-second fallback for non-Office.js environments | 02-02 | Allows browser testing of WebSocket without PowerPoint |
+| KD-0301-1 | Single executeCode action (no discrete handlers) | 03-01 | Phase 4 MCP tools compose Office.js code strings |
+| KD-0301-2 | AsyncFunction constructor for dynamic code execution | 03-01 | Runs arbitrary code with context and PowerPoint in scope |
+| KD-0301-3 | /api/test HTTP endpoint for round-trip verification | 03-01 | Tests full pipeline without MCP |
 
 ### Pending Todos
 
@@ -49,6 +52,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-07
-Stopped at: Phase 2 complete, verified in PowerPoint
+Last session: 2026-02-08
+Stopped at: Phase 3 complete, command protocol verified with live PowerPoint (17 slides returned)
 Resume file: None
