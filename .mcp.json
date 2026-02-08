@@ -2,7 +2,7 @@
   "mcpServers": {
     "powerpoint-bridge": {
       "type": "http",
-      "url": "https://localhost:8443/mcp"
+      "url": "http://localhost:3001/mcp"
     }
   }
 }

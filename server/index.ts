@@ -1,4 +1,5 @@
 import { createServer } from 'node:https';
+import { createServer as createHttpServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, extname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +16,7 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 
 const PORT = 8443;
+const MCP_PORT = 3001;
 const CERT_PATH = './certs/localhost.pem';
 const KEY_PATH = './certs/localhost-key.pem';
 const STATIC_DIR = resolve('./addin');
@@ -444,21 +446,7 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
 const cert = readFileSync(CERT_PATH);
 const key = readFileSync(KEY_PATH);
 
-function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
-  const url = (req.url ?? '/').split('?')[0];
-
-  if (url === '/mcp') {
-    if (req.method === 'POST') { handleMcpPost(req, res); }
-    else if (req.method === 'GET') { handleMcpGet(req, res); }
-    else if (req.method === 'DELETE') { handleMcpDelete(req, res); }
-    else { res.writeHead(405); res.end(); }
-    return;
-  }
-
-  serveStatic(req, res);
-}
-
-const server = createServer({ cert, key }, handleHttpRequest);
+const server = createServer({ cert, key }, serveStatic);
 
 // ---------------------------------------------------------------------------
 // WebSocket server (shares port with HTTPS via { server } option)
@@ -543,5 +531,28 @@ server.listen(PORT, () => {
   console.error('Bridge server running');
   console.error(`  HTTPS: https://localhost:${PORT}`);
   console.error(`  WSS:   wss://localhost:${PORT}`);
-  console.error(`  MCP:   https://localhost:${PORT}/mcp`);
+});
+
+// ---------------------------------------------------------------------------
+// Plain HTTP server for MCP (avoids TLS trust issues with Claude Code)
+// ---------------------------------------------------------------------------
+
+function handleMcpRequest(req: IncomingMessage, res: ServerResponse): void {
+  const url = (req.url ?? '/').split('?')[0];
+
+  if (url === '/mcp') {
+    if (req.method === 'POST') { handleMcpPost(req, res); }
+    else if (req.method === 'GET') { handleMcpGet(req, res); }
+    else if (req.method === 'DELETE') { handleMcpDelete(req, res); }
+    else { res.writeHead(405); res.end(); }
+    return;
+  }
+
+  res.writeHead(404, { 'Content-Type': 'text/plain' });
+  res.end('MCP endpoint is at /mcp');
+}
+
+const mcpHttpServer = createHttpServer(handleMcpRequest);
+mcpHttpServer.listen(MCP_PORT, () => {
+  console.error(`  MCP:   http://localhost:${MCP_PORT}/mcp`);
 });
