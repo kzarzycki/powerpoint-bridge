@@ -14,7 +14,7 @@ This roadmap delivers a live PowerPoint editing bridge in four phases, each buil
 - [x] **Phase 2: PowerPoint Add-in** - Office.js taskpane loads in PowerPoint and connects to bridge server
 - [x] **Phase 3: Command Execution** - JSON protocol and arbitrary Office.js code execution over WebSocket
 - [x] **Phase 4: MCP Tools** - Stdio MCP server with get_presentation, get_slide, and execute_officejs tools
-- [ ] **Phase 5: Multi-Session Support** - Multiple Claude Code sessions and multiple open presentations
+- [x] **Phase 5: Multi-Session Support** - Multiple Claude Code sessions and multiple open presentations
 
 ## Phase Details
 
@@ -86,8 +86,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- Multi-connection WebSocket pool and add-in identity reporting
-- [ ] 05-02-PLAN.md -- MCP HTTP transport, targeting tools, and configuration
+- [x] 05-01-PLAN.md -- Multi-connection WebSocket pool and add-in identity reporting
+- [x] 05-02-PLAN.md -- MCP HTTP transport, targeting tools, and configuration
 
 ## Progress
 
@@ -100,4 +100,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. PowerPoint Add-in | 2/2 | Complete | 2026-02-07 |
 | 3. Command Execution | 1/1 | Complete | 2026-02-08 |
 | 4. MCP Tools | 1/1 | Complete | 2026-02-08 |
-| 5. Multi-Session Support | 0/? | Not Started | — |
+| 5. Multi-Session Support | 2/2 | Complete | 2026-02-08 |

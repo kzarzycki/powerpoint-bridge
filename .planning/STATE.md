@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-06)
 
 **Core value:** Claude Code can see what's on a slide and make precise, iterative modifications to a live presentation
-**Current focus:** Phase 5 — Multi-session and multi-presentation support
+**Current focus:** Milestone v1.0 complete — all 5 phases delivered
 
 ## Current Position
 
-Phase: 5 of 5 (Multi-Session Support) — In progress
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-08 — Completed 05-01-PLAN.md
+Phase: 5 of 5 (Multi-Session Support) — Complete
+Plan: 2 of 2 in current phase
+Status: All phases complete
+Last activity: 2026-02-08 — Phase 5 verified, milestone complete
 
-Progress: [████████░░] 87%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: ~5 minutes
-- Total execution time: ~0.5 hours
+- Total execution time: ~0.6 hours
 
 ## Accumulated Context
 
@@ -48,10 +48,15 @@ Progress: [████████░░] 87%
 | KD-0501-2 | resolveTarget() auto-detect single, error for multiple | 05-01 | Zero-friction backward compat for single presentation |
 | KD-0501-3 | PendingRequest tracks originating WebSocket | 05-01 | Per-connection cleanup on disconnect |
 | KD-0501-4 | Unsaved presentations get untitled-N generated IDs | 05-01 | Fallback when Office.js document.url is null |
+| KD-0502-1 | Plain HTTP on port 3001 for MCP | 05-02 | Claude Code's fetch ignores NODE_EXTRA_CA_CERTS |
+| KD-0502-2 | Per-session McpServer+Transport pairs | 05-02 | Factory function creates isolated instances per HTTP session |
+| KD-0502-3 | Auto-detect single, require presentationId for multiple | 05-02 | Zero friction for common single-presentation case |
+| KD-0502-4 | Concurrent access warning once per session per presentation | 05-02 | Non-blocking last-write-wins notification |
 
 ### Roadmap Evolution
 
-- Phase 5 added: Multi-session and multi-presentation support (multiple Claude Code sessions connecting to different/same PowerPoint presentations)
+- Phase 5 added: Multi-session and multi-presentation support
+- Phase 5 completed: All phases delivered
 
 ### Pending Todos
 
@@ -63,6 +68,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-08T20:47:33Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-02-08T21:20:00Z
+Stopped at: Milestone v1.0 complete
 Resume file: None
