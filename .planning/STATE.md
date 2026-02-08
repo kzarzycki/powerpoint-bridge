@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-06)
 
 **Core value:** Claude Code can see what's on a slide and make precise, iterative modifications to a live presentation
-**Current focus:** All phases complete — milestone ready for completion
+**Current focus:** Phase 5 — Multi-session and multi-presentation support
 
 ## Current Position
 
-Phase: 4 of 4 (MCP Tools) — COMPLETE
-Plan: 1 of 1 in current phase
-Status: Milestone complete
-Last activity: 2026-02-08 — Completed 04-01-PLAN.md
+Phase: 5 of 5 (Multi-Session Support) — In progress
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-08 — Completed 05-01-PLAN.md
 
-Progress: [██████████] 100%
+Progress: [████████░░] 87%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: ~6 minutes
+- Total plans completed: 7
+- Average duration: ~5 minutes
 - Total execution time: ~0.5 hours
 
 ## Accumulated Context
@@ -44,6 +44,14 @@ Progress: [██████████] 100%
 | KD-0401-1 | mcpServer.tool() API for tool registration | 04-01 | Simpler 3-arg form works in SDK v1.26.0 |
 | KD-0401-2 | Office.js code uses var declarations in tool code strings | 04-01 | WKWebView compatibility |
 | KD-0401-3 | All console.log -> console.error | 04-01 | Protects MCP stdio transport from corruption |
+| KD-0501-1 | addinConnections Map keyed by presentationId | 05-01 | Replaces single addinClient for multi-connection support |
+| KD-0501-2 | resolveTarget() auto-detect single, error for multiple | 05-01 | Zero-friction backward compat for single presentation |
+| KD-0501-3 | PendingRequest tracks originating WebSocket | 05-01 | Per-connection cleanup on disconnect |
+| KD-0501-4 | Unsaved presentations get untitled-N generated IDs | 05-01 | Fallback when Office.js document.url is null |
+
+### Roadmap Evolution
+
+- Phase 5 added: Multi-session and multi-presentation support (multiple Claude Code sessions connecting to different/same PowerPoint presentations)
 
 ### Pending Todos
 
@@ -55,6 +63,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-08
-Stopped at: All phases complete — milestone ready for archival
+Last session: 2026-02-08T20:47:33Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
