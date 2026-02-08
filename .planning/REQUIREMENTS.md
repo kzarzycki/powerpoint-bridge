@@ -68,11 +68,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-02 | Phase 1: Secure Server | Complete |
 | INFRA-03 | Phase 1: Secure Server | Complete |
 | INFRA-04 | Phase 4: MCP Tools | Pending |
-| INFRA-05 | Phase 3: Command Execution | Pending |
+| INFRA-05 | Phase 3: Command Execution | Complete |
 | ADDIN-01 | Phase 2: PowerPoint Add-in | Complete |
 | ADDIN-02 | Phase 2: PowerPoint Add-in | Complete |
 | ADDIN-03 | Phase 2: PowerPoint Add-in | Complete |
-| ADDIN-04 | Phase 3: Command Execution | Pending |
+| ADDIN-04 | Phase 3: Command Execution | Complete |
 | ADDIN-05 | Phase 2: PowerPoint Add-in | Complete |
 | TOOL-01 | Phase 4: MCP Tools | Pending |
 | TOOL-02 | Phase 4: MCP Tools | Pending |
@@ -85,4 +85,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-06*
-*Last updated: 2026-02-06 — traceability updated with phase mappings*
+*Last updated: 2026-02-08 — INFRA-05, ADDIN-04 marked Complete (Phase 3)*
