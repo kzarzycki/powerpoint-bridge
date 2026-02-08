@@ -59,21 +59,27 @@ interface PendingRequest {
   resolve: (data: unknown) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  ws: WebSocket;
 }
 
 const pendingRequests = new Map<string, PendingRequest>();
 const COMMAND_TIMEOUT = 30_000;
-let addinClient: WebSocket | null = null;
-let addinReady = false;
 
-function sendCommand(action: string, params: Record<string, unknown>): Promise<unknown> {
-  if (!addinClient || addinClient.readyState !== 1) {
-    return Promise.reject(new Error('Add-in not connected'));
-  }
-  if (!addinReady) {
-    return Promise.reject(new Error('Add-in not ready'));
-  }
+// ---------------------------------------------------------------------------
+// Multi-connection pool
+// ---------------------------------------------------------------------------
 
+interface AddinConnection {
+  ws: WebSocket;
+  ready: boolean;
+  presentationId: string;
+  filePath: string | null;
+}
+
+const addinConnections = new Map<string, AddinConnection>();
+let untitledCounter = 0;
+
+function sendCommand(action: string, params: Record<string, unknown>, targetWs: WebSocket): Promise<unknown> {
   const id = randomUUID();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -81,9 +87,28 @@ function sendCommand(action: string, params: Record<string, unknown>): Promise<u
       reject(new Error(`Command timed out after ${COMMAND_TIMEOUT}ms`));
     }, COMMAND_TIMEOUT);
 
-    pendingRequests.set(id, { resolve, reject, timer });
-    addinClient!.send(JSON.stringify({ type: 'command', id, action, params }));
+    pendingRequests.set(id, { resolve, reject, timer, ws: targetWs });
+    targetWs.send(JSON.stringify({ type: 'command', id, action, params }));
   });
+}
+
+function resolveTarget(presentationId?: string): AddinConnection {
+  if (addinConnections.size === 0) {
+    throw new Error('No presentations connected. Open a PowerPoint file with the bridge add-in loaded.');
+  }
+  if (presentationId) {
+    const conn = addinConnections.get(presentationId);
+    if (!conn) throw new Error('Presentation not found: ' + presentationId + '. Use list_presentations to see connected presentations.');
+    if (!conn.ready) throw new Error('Presentation connected but not ready: ' + presentationId);
+    return conn;
+  }
+  if (addinConnections.size === 1) {
+    const single = addinConnections.values().next().value!;
+    if (!single.ready) throw new Error('Add-in connected but not ready');
+    return single;
+  }
+  const ids = [...addinConnections.keys()];
+  throw new Error('Multiple presentations connected. Specify presentationId parameter. Available: ' + ids.join(', '));
 }
 
 // ---------------------------------------------------------------------------
@@ -96,9 +121,18 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
 
   // API: test endpoint — sends a slide count command to the add-in
   if (rawUrl === '/api/test') {
+    let target: AddinConnection;
+    try {
+      target = resolveTarget();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: message }));
+      return;
+    }
     sendCommand('executeCode', {
       code: 'var c = context.presentation.slides.getCount(); await context.sync(); return c.value;',
-    })
+    }, target.ws)
       .then((result) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ slideCount: result }));
@@ -148,11 +182,10 @@ const server = createServer({ cert, key }, serveStatic);
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws: WebSocket) => {
-  addinClient = ws;
   console.error('WebSocket client connected');
 
   ws.on('message', (data: Buffer) => {
-    let msg: { type?: string; id?: string; data?: unknown; error?: { message?: string } };
+    let msg: { type?: string; id?: string; data?: unknown; error?: { message?: string }; documentUrl?: string };
     try {
       msg = JSON.parse(data.toString());
     } catch {
@@ -174,20 +207,42 @@ wss.on('connection', (ws: WebSocket) => {
     }
 
     if (msg.type === 'ready') {
-      addinReady = true;
-      console.error('Add-in ready to receive commands');
+      const documentUrl = typeof msg.documentUrl === 'string' && msg.documentUrl.length > 0
+        ? msg.documentUrl
+        : null;
+      const presentationId = documentUrl ?? ('untitled-' + (++untitledCounter));
+      const conn: AddinConnection = {
+        ws,
+        ready: true,
+        presentationId,
+        filePath: documentUrl,
+      };
+      addinConnections.set(presentationId, conn);
+      console.error('Add-in ready: ' + presentationId);
     }
   });
 
   ws.on('close', () => {
-    for (const [id, pending] of pendingRequests) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error('Add-in disconnected'));
+    // Find which connection disconnected
+    let disconnectedId: string | null = null;
+    for (const [id, conn] of addinConnections) {
+      if (conn.ws === ws) {
+        disconnectedId = id;
+        break;
+      }
     }
-    pendingRequests.clear();
-    addinClient = null;
-    addinReady = false;
-    console.error('WebSocket client disconnected');
+    if (disconnectedId) {
+      addinConnections.delete(disconnectedId);
+      console.error('Add-in disconnected: ' + disconnectedId);
+    }
+    // Reject only pending requests that were sent to this WebSocket
+    for (const [id, pending] of pendingRequests) {
+      if (pending.ws === ws) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error('Add-in disconnected'));
+        pendingRequests.delete(id);
+      }
+    }
   });
 
   ws.on('error', (err: Error) => {
@@ -240,7 +295,8 @@ mcpServer.tool(
         }
         return output;
       `;
-      const result = await sendCommand('executeCode', { code });
+      const target = resolveTarget();
+      const result = await sendCommand('executeCode', { code }, target.ws);
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -296,7 +352,8 @@ mcpServer.tool(
         }
         return { slideIndex: ${slideIndex}, slideId: slide.id, shapes: shapes };
       `;
-      const result = await sendCommand('executeCode', { code });
+      const target = resolveTarget();
+      const result = await sendCommand('executeCode', { code }, target.ws);
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -312,7 +369,8 @@ mcpServer.tool(
   { code: z.string().describe("Office.js code to execute. Runs inside PowerPoint.run() with 'context' available. Use 'return' to send back a result.") },
   async ({ code }) => {
     try {
-      const result = await sendCommand('executeCode', { code });
+      const target = resolveTarget();
+      const result = await sendCommand('executeCode', { code }, target.ws);
       return { content: [{ type: "text" as const, text: JSON.stringify(result ?? { success: true }, null, 2) }] };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
