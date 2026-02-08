@@ -69,11 +69,10 @@ Plans:
   3. Calling `get_slide` with a slide index returns detailed shape data including text content, positions, sizes, and fill colors
   4. Calling `execute_officejs` with Office.js code modifies the live presentation and the change appears in PowerPoint immediately
   5. A round-trip workflow works: read presentation state, write Office.js to modify it, read again to confirm the change
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 04-01: MCP stdio server and tool registration
-- [ ] 04-02: Read tools (get_presentation, get_slide) and execute tool (execute_officejs)
+- [ ] 04-01-PLAN.md -- MCP stdio server with get_presentation, get_slide, and execute_officejs tools
 
 ## Progress
 
@@ -85,4 +84,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 1. Secure Server | 2/2 | Complete | 2026-02-06 |
 | 2. PowerPoint Add-in | 2/2 | Complete | 2026-02-07 |
 | 3. Command Execution | 1/1 | Complete | 2026-02-08 |
-| 4. MCP Tools | 0/2 | Not started | - |
+| 4. MCP Tools | 0/1 | Not started | - |
