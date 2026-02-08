@@ -5,6 +5,9 @@ import { randomUUID } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { WebSocket } from 'ws';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -146,7 +149,7 @@ const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws: WebSocket) => {
   addinClient = ws;
-  console.log('WebSocket client connected');
+  console.error('WebSocket client connected');
 
   ws.on('message', (data: Buffer) => {
     let msg: { type?: string; id?: string; data?: unknown; error?: { message?: string } };
@@ -172,7 +175,7 @@ wss.on('connection', (ws: WebSocket) => {
 
     if (msg.type === 'ready') {
       addinReady = true;
-      console.log('Add-in ready to receive commands');
+      console.error('Add-in ready to receive commands');
     }
   });
 
@@ -184,7 +187,7 @@ wss.on('connection', (ws: WebSocket) => {
     pendingRequests.clear();
     addinClient = null;
     addinReady = false;
-    console.log('WebSocket client disconnected');
+    console.error('WebSocket client disconnected');
   });
 
   ws.on('error', (err: Error) => {
@@ -197,7 +200,22 @@ wss.on('connection', (ws: WebSocket) => {
 // ---------------------------------------------------------------------------
 
 server.listen(PORT, () => {
-  console.log('Bridge server running');
-  console.log(`  HTTPS: https://localhost:${PORT}`);
-  console.log(`  WSS:   wss://localhost:${PORT}`);
+  console.error('Bridge server running');
+  console.error(`  HTTPS: https://localhost:${PORT}`);
+  console.error(`  WSS:   wss://localhost:${PORT}`);
 });
+
+// ---------------------------------------------------------------------------
+// MCP server (stdio transport — coexists with HTTPS+WSS on port 8443)
+// ---------------------------------------------------------------------------
+
+const mcpServer = new McpServer({
+  name: "powerpoint-bridge",
+  version: "0.1.0",
+});
+
+// [Tool registrations will go here — Task 2]
+
+const transport = new StdioServerTransport();
+await mcpServer.connect(transport);
+console.error("MCP server connected via stdio");

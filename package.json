@@ -9,7 +9,9 @@
     "sideload": "mkdir -p ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef && cp addin/manifest.xml ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/"
   },
   "dependencies": {
-    "ws": "^8.19.0"
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
