@@ -12,7 +12,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **INFRA-01**: TLS certificates generated via mkcert and trusted in macOS Keychain
 - [ ] **INFRA-02**: Node.js HTTPS server serves add-in static files on localhost
 - [ ] **INFRA-03**: WSS server accepts WebSocket connections from add-in
-- [ ] **INFRA-04**: MCP server (stdio transport) exposes tools to Claude Code
+- [x] **INFRA-04**: MCP server (stdio transport) exposes tools to Claude Code
 - [ ] **INFRA-05**: JSON command/response protocol with unique request IDs for async matching
 
 ### Add-in
@@ -25,9 +25,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### MCP Tools
 
-- [ ] **TOOL-01**: `get_presentation` returns structured JSON of all slides with shape summaries (count, order, IDs, shape names/types)
-- [ ] **TOOL-02**: `get_slide` returns detailed info for one slide — all shapes with text content, positions, sizes, fill colors, font colors
-- [ ] **TOOL-03**: `execute_officejs` accepts Office.js code string, executes it in PowerPoint.run() context, and returns the result
+- [x] **TOOL-01**: `get_presentation` returns structured JSON of all slides with shape summaries (count, order, IDs, shape names/types)
+- [x] **TOOL-02**: `get_slide` returns detailed info for one slide — all shapes with text content, positions, sizes, fill colors, font colors
+- [x] **TOOL-03**: `execute_officejs` accepts Office.js code string, executes it in PowerPoint.run() context, and returns the result
 
 ## v2 Requirements
 
@@ -67,16 +67,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-01 | Phase 1: Secure Server | Complete |
 | INFRA-02 | Phase 1: Secure Server | Complete |
 | INFRA-03 | Phase 1: Secure Server | Complete |
-| INFRA-04 | Phase 4: MCP Tools | Pending |
+| INFRA-04 | Phase 4: MCP Tools | Complete |
 | INFRA-05 | Phase 3: Command Execution | Complete |
 | ADDIN-01 | Phase 2: PowerPoint Add-in | Complete |
 | ADDIN-02 | Phase 2: PowerPoint Add-in | Complete |
 | ADDIN-03 | Phase 2: PowerPoint Add-in | Complete |
 | ADDIN-04 | Phase 3: Command Execution | Complete |
 | ADDIN-05 | Phase 2: PowerPoint Add-in | Complete |
-| TOOL-01 | Phase 4: MCP Tools | Pending |
-| TOOL-02 | Phase 4: MCP Tools | Pending |
-| TOOL-03 | Phase 4: MCP Tools | Pending |
+| TOOL-01 | Phase 4: MCP Tools | Complete |
+| TOOL-02 | Phase 4: MCP Tools | Complete |
+| TOOL-03 | Phase 4: MCP Tools | Complete |
 
 **Coverage:**
 - v1 requirements: 13 total
@@ -85,4 +85,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-06*
-*Last updated: 2026-02-08 — INFRA-05, ADDIN-04 marked Complete (Phase 3)*
+*Last updated: 2026-02-08 — All v1 requirements Complete*

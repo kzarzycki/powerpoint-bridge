@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-06)
 
 **Core value:** Claude Code can see what's on a slide and make precise, iterative modifications to a live presentation
-**Current focus:** Phase 3 complete, ready for Phase 4
+**Current focus:** All phases complete — milestone ready for completion
 
 ## Current Position
 
-Phase: 3 of 4 (Command Execution) — COMPLETE
+Phase: 4 of 4 (MCP Tools) — COMPLETE
 Plan: 1 of 1 in current phase
-Status: Phase complete
-Last activity: 2026-02-08 — Completed 03-01-PLAN.md
+Status: Milestone complete
+Last activity: 2026-02-08 — Completed 04-01-PLAN.md
 
-Progress: [███████░░░] 71%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: ~5 minutes
-- Total execution time: ~0.4 hours
+- Total plans completed: 6
+- Average duration: ~6 minutes
+- Total execution time: ~0.5 hours
 
 ## Accumulated Context
 
@@ -41,6 +41,9 @@ Progress: [███████░░░] 71%
 | KD-0301-1 | Single executeCode action (no discrete handlers) | 03-01 | Phase 4 MCP tools compose Office.js code strings |
 | KD-0301-2 | AsyncFunction constructor for dynamic code execution | 03-01 | Runs arbitrary code with context and PowerPoint in scope |
 | KD-0301-3 | /api/test HTTP endpoint for round-trip verification | 03-01 | Tests full pipeline without MCP |
+| KD-0401-1 | mcpServer.tool() API for tool registration | 04-01 | Simpler 3-arg form works in SDK v1.26.0 |
+| KD-0401-2 | Office.js code uses var declarations in tool code strings | 04-01 | WKWebView compatibility |
+| KD-0401-3 | All console.log -> console.error | 04-01 | Protects MCP stdio transport from corruption |
 
 ### Pending Todos
 
@@ -53,5 +56,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Phase 3 complete, command protocol verified with live PowerPoint (17 slides returned)
+Stopped at: All phases complete — milestone ready for archival
 Resume file: None
