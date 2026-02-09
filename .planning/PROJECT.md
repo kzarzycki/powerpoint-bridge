@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A system that lets Claude Code manipulate live, open PowerPoint presentations on macOS via Office.js APIs. An Office.js add-in connects over WebSocket to a Node.js bridge server, which exposes MCP tools so Claude Code can read slide contents and make precise modifications to an open deck — enabling co-development of presentations in real-time. This is the first such solution; all existing macOS tools use python-pptx (file-based, no live editing).
+A system that lets Claude Code manipulate live, open PowerPoint presentations on macOS via Office.js APIs. An Office.js add-in connects over WebSocket to a Node.js bridge server, which exposes MCP tools so Claude Code can read slide contents and make precise modifications to an open deck — enabling co-development of presentations in real-time. Supports multiple simultaneous presentations and concurrent Claude Code sessions. This is the first live-editing MCP bridge for PowerPoint on macOS; all existing solutions use python-pptx (file-based, no live editing).
 
 ## Core Value
 
@@ -12,20 +12,23 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 
 ### Validated
 
-(None yet — ship to validate)
+- TLS certificate generation and trust setup for WSS — v1
+- Office.js add-in that loads in PowerPoint taskpane and connects to bridge server via WSS — v1
+- Node.js bridge server serving add-in files over HTTPS, running WSS server, and exposing MCP tools — v1
+- Manifest XML for sideloading into PowerPoint on macOS — v1
+- JSON command/response protocol with request IDs for async matching — v1
+- MCP tool: `get_presentation` — returns structured JSON of all slides with shape summaries — v1
+- MCP tool: `get_slide` — returns detailed info for one slide (shapes, text, positions, sizes, colors) — v1
+- MCP tool: `execute_officejs` — sends arbitrary Office.js code to add-in for execution, returns result — v1
+- Add-in executes arbitrary Office.js code in PowerPoint.run() context and returns results — v1
+- Connection status visible in add-in taskpane — v1
+- Multi-presentation support with per-call targeting — v1
+- Multi-session support for concurrent Claude Code sessions — v1
+- MCP HTTP transport for multi-session compatibility — v1
 
 ### Active
 
-- [ ] TLS certificate generation and trust setup for WSS
-- [ ] Office.js add-in that loads in PowerPoint taskpane and connects to bridge server via WSS
-- [ ] Node.js bridge server serving add-in files over HTTPS, running WSS server, and exposing MCP tools via stdio
-- [ ] Manifest XML for sideloading into PowerPoint on macOS
-- [ ] JSON command/response protocol with request IDs for async matching
-- [ ] MCP tool: `get_presentation` — returns structured JSON of all slides with shape summaries
-- [ ] MCP tool: `get_slide` — returns detailed info for one slide (shapes, text, positions, sizes, colors)
-- [ ] MCP tool: `execute_officejs` — sends arbitrary Office.js code to add-in for execution, returns result
-- [ ] Add-in executes arbitrary Office.js code in PowerPoint.run() context and returns results
-- [ ] Connection status visible in add-in taskpane
+(None — next milestone not yet planned)
 
 ### Out of Scope
 
@@ -34,19 +37,17 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 - Animations/transitions — not in stable APIs
 - Gradient fills, effects, shadows — only solid fills supported
 - Slide master/theme editing — not available in API
-- Auto-reconnection / command queuing — reload add-in if connection drops (v2)
 - npm packaging / public release — personal tool for now, may share later
 - OAuth/Microsoft Store submission — sideloading only
 
 ## Context
 
-- All existing macOS MCP servers for PowerPoint use python-pptx (file-based). Only Windows COM solutions have live editing. This would be the first live-editing MCP bridge for macOS.
-- Office.js PowerPoint API requirement sets 1.1-1.9 are stable on macOS 16.19+. Set 1.10 is preview.
-- macOS runs add-ins in Safari WKWebView (WebKit2) which enforces WSS — plain ws:// won't connect to localhost.
-- Add-in is sandboxed in WKWebView — cannot host servers, can only make outbound connections.
-- Positioning uses points (1 point = 1/72 inch).
+- Shipped v1 with 931 LOC across TypeScript, JavaScript, HTML, CSS, XML.
+- Tech stack: Node.js 24 (native TS), ws library, MCP SDK, Office.js API 1.1-1.9.
+- Architecture: HTTPS+WSS on port 8443 (add-in), plain HTTP on port 3001 (MCP).
+- Office.js PowerPoint API requirement sets 1.1-1.9 are stable on macOS 16.19+.
+- macOS runs add-ins in Safari WKWebView (WebKit2) which enforces WSS.
 - Sideloading path: `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/`
-- mkcert handles TLS cert generation and auto-trusts in macOS Keychain.
 - Anthropic's built-in pptx skill uses PptxGenJS for file generation — this project complements it with live editing.
 
 ## Constraints
@@ -56,19 +57,22 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 - **Solid fills only**: Office.js doesn't support gradients, effects, or shadows
 - **Points for positioning**: All shape coordinates in points (1/72 inch)
 - **No image API**: Office.js has no direct image insertion; Base64 slide import is only workaround
-- **Single process**: Bridge server combines HTTPS + WSS + MCP stdio in one Node.js process for simplicity
+- **MCP uses plain HTTP**: Claude Code's HTTP client ignores NODE_EXTRA_CA_CERTS, so MCP runs on separate plain HTTP port
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| WebSocket over HTTP polling | Real-time bidirectional communication needed for co-development; polling adds latency | — Pending |
-| Single Node.js process for HTTPS+WSS+MCP | Simplicity over microservices; one process to start/stop | — Pending |
-| mkcert for TLS | Simpler than OpenSSL, auto-trusts in Keychain | — Pending |
-| TypeScript for add-in and server | Office.js has good TS types, catches API misuse at compile time | — Pending |
-| Sideloading only (no Store submission) | Development use case, no distribution needed | — Pending |
-| v1 = Bridge + MCP with read/write tools, iterate from usage | Ship working co-development workflow, expand tools based on real needs | — Pending |
-| 3-tool architecture: get_presentation + get_slide + execute_officejs | Maximum capability with minimum tools; Claude writes Office.js directly instead of mapping every operation to a separate MCP tool | — Pending |
+| WebSocket over HTTP polling | Real-time bidirectional communication needed | Good |
+| Single Node.js process for HTTPS+WSS+MCP | Simplicity over microservices | Good |
+| mkcert for TLS | Simpler than OpenSSL, auto-trusts in Keychain | Good |
+| TypeScript for server, plain JS for add-in | WKWebView compatibility requires plain JS in add-in | Good |
+| Sideloading only (no Store submission) | Development use case, no distribution needed | Good |
+| 3-tool architecture: get_presentation + get_slide + execute_officejs | Maximum capability with minimum tools | Good |
+| Port 8443 for HTTPS+WSS | Standard alternative HTTPS port, avoids conflicts | Good |
+| AsyncFunction constructor for dynamic code execution | Runs arbitrary code with context and PowerPoint in scope | Good |
+| Plain HTTP on port 3001 for MCP | Claude Code's fetch ignores NODE_EXTRA_CA_CERTS | Good |
+| Per-session McpServer instances | Isolates concurrent Claude Code sessions | Good |
 
 ---
-*Last updated: 2026-02-06 after tool architecture revision*
+*Last updated: 2026-02-09 after v1 milestone*
