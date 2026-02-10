@@ -28,7 +28,16 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 
 ### Active
 
-(None — next milestone not yet planned)
+- [ ] README with architecture overview, setup guide, and usage examples
+- [ ] MIT LICENSE file
+- [ ] Comprehensive .gitignore for macOS/Node.js/IDE files
+- [ ] ESLint + Prettier configuration with consistent code style
+- [ ] Test framework with meaningful coverage of bridge server and protocol
+- [ ] GitHub Actions CI (lint, typecheck, test)
+- [ ] CONTRIBUTING.md with development setup and contribution guide
+- [ ] Clean up hardcoded/user-specific paths in documentation
+- [ ] Package.json version reset to 0.1.0 for first public release
+- [ ] Windows compatibility notes in documentation
 
 ### Out of Scope
 
@@ -37,7 +46,7 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 - Animations/transitions — not in stable APIs
 - Gradient fills, effects, shadows — only solid fills supported
 - Slide master/theme editing — not available in API
-- npm packaging / public release — personal tool for now, may share later
+- npm packaging / npm registry publication — install from git for now
 - OAuth/Microsoft Store submission — sideloading only
 
 ## Context
@@ -74,5 +83,17 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 | Plain HTTP on port 3001 for MCP | Claude Code's fetch ignores NODE_EXTRA_CA_CERTS | Good |
 | Per-session McpServer instances | Isolates concurrent Claude Code sessions | Good |
 
+## Current Milestone: v2 Open Source Release
+
+**Goal:** Make the project a proper open-source repository that anyone with macOS + PowerPoint can clone, set up, and use — with clean code, tests, docs, and CI.
+
+**Target features:**
+- Professional README with architecture diagram, setup guide, usage examples
+- MIT license and contribution guidelines
+- ESLint + Prettier for consistent code style
+- Test suite with meaningful coverage
+- GitHub Actions CI pipeline
+- Clean, generic documentation (no hardcoded user paths)
+
 ---
-*Last updated: 2026-02-09 after v1 milestone*
+*Last updated: 2026-02-10 after v2 milestone start*
