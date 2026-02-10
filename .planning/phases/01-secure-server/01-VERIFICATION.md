@@ -37,7 +37,7 @@ re_verification: false
 | certs/localhost-key.pem | TLS private key for localhost | ✓ VERIFIED | EXISTS (1704 bytes, mode 600). Private key file present and readable by server. |
 | addin/index.html | Placeholder HTML page for static serving | ✓ VERIFIED | 33 lines. Complete HTML5 document with DOCTYPE, charset, viewport, title "PowerPoint Bridge", h1 heading, status paragraph with id="status", inline CSS for styling. |
 | server/index.ts | HTTPS static server + WSS endpoint | ✓ VERIFIED | 116 lines (exceeds 60 min). Imports node:https, node:fs, node:path, ws. Implements startup cert check (lines 21-28), MIME type mapping (lines 34-48), static file serving with path traversal protection (lines 54-75), HTTPS server creation (lines 81-84), WebSocketServer with connection handlers (lines 90-106), server startup with URL logging (lines 112-116). No TODO/FIXME/placeholder patterns found. |
-| node_modules/ws | WebSocket dependency installed | ✓ VERIFIED | Directory exists at /Users/zarz/dev/powerpoint-bridge/node_modules/ws. npm install completed successfully. |
+| node_modules/ws | WebSocket dependency installed | ✓ VERIFIED | Directory exists at <project-root>/node_modules/ws. npm install completed successfully. |
 
 **All artifacts:** 8/8 verified (existence + substantive + wired)
 

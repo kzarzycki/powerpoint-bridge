@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A system that lets Claude Code manipulate live, open PowerPoint presentations on macOS via Office.js APIs. An Office.js add-in connects over WebSocket to a Node.js bridge server, which exposes MCP tools so Claude Code can read slide contents and make precise modifications to an open deck — enabling co-development of presentations in real-time. Supports multiple simultaneous presentations and concurrent Claude Code sessions. This is the first live-editing MCP bridge for PowerPoint on macOS; all existing solutions use python-pptx (file-based, no live editing).
+An MCP server that lets AI assistants manipulate live, open PowerPoint presentations on macOS via Office.js APIs. An Office.js add-in connects over WebSocket to a Node.js bridge server, which exposes MCP tools so Claude Code can read slide contents and make precise modifications to an open deck — enabling co-development of presentations in real-time. Supports multiple simultaneous presentations and concurrent MCP sessions. This is the first live-editing MCP bridge for PowerPoint on macOS; all existing solutions use python-pptx (file-based, no live editing).
 
 ## Core Value
 
@@ -25,19 +25,20 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 - Multi-presentation support with per-call targeting — v1
 - Multi-session support for concurrent Claude Code sessions — v1
 - MCP HTTP transport for multi-session compatibility — v1
+- README with architecture overview, setup guide, and MCP client configurations — v2
+- MIT LICENSE file — v2
+- Comprehensive .gitignore for macOS/Node.js/IDE files — v2
+- Biome lint + format configuration with consistent code style — v2
+- Vitest test framework with meaningful coverage of bridge server and MCP tools — v2
+- GitHub Actions CI (lint, typecheck, test) — v2
+- CONTRIBUTING.md with development setup and contribution guide — v2
+- Clean up hardcoded/user-specific paths in documentation — v2
+- Package.json version 0.1.0 for first public release — v2
+- Windows compatibility notes in documentation — v2
 
 ### Active
 
-- [ ] README with architecture overview, setup guide, and usage examples
-- [ ] MIT LICENSE file
-- [ ] Comprehensive .gitignore for macOS/Node.js/IDE files
-- [ ] ESLint + Prettier configuration with consistent code style
-- [ ] Test framework with meaningful coverage of bridge server and protocol
-- [ ] GitHub Actions CI (lint, typecheck, test)
-- [ ] CONTRIBUTING.md with development setup and contribution guide
-- [ ] Clean up hardcoded/user-specific paths in documentation
-- [ ] Package.json version reset to 0.1.0 for first public release
-- [ ] Windows compatibility notes in documentation
+(None — planning next milestone)
 
 ### Out of Scope
 
@@ -51,13 +52,14 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 
 ## Context
 
-- Shipped v1 with 931 LOC across TypeScript, JavaScript, HTML, CSS, XML.
-- Tech stack: Node.js 24 (native TS), ws library, MCP SDK, Office.js API 1.1-1.9.
+- Shipped v1 (Feb 6-9, 2026) with 931 LOC. Shipped v2 (Feb 10, 2026) with 1,281 LOC.
+- Tech stack: Node.js 24 (native TS), ws library, MCP SDK, Office.js API 1.1-1.9, Biome, Vitest.
 - Architecture: HTTPS+WSS on port 8443 (add-in), plain HTTP on port 3001 (MCP).
+- Server split into 3 files: bridge.ts (ConnectionPool), tools.ts (MCP tools), index.ts (entrypoint).
+- 22 tests, GitHub Actions CI, MIT license.
 - Office.js PowerPoint API requirement sets 1.1-1.9 are stable on macOS 16.19+.
 - macOS runs add-ins in Safari WKWebView (WebKit2) which enforces WSS.
 - Sideloading path: `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/`
-- Anthropic's built-in pptx skill uses PptxGenJS for file generation — this project complements it with live editing.
 
 ## Constraints
 
@@ -82,18 +84,11 @@ Claude Code can see what's on a slide and make precise, iterative modifications 
 | AsyncFunction constructor for dynamic code execution | Runs arbitrary code with context and PowerPoint in scope | Good |
 | Plain HTTP on port 3001 for MCP | Claude Code's fetch ignores NODE_EXTRA_CA_CERTS | Good |
 | Per-session McpServer instances | Isolates concurrent Claude Code sessions | Good |
-
-## Current Milestone: v2 Open Source Release
-
-**Goal:** Make the project a proper open-source repository that anyone with macOS + PowerPoint can clone, set up, and use — with clean code, tests, docs, and CI.
-
-**Target features:**
-- Professional README with architecture diagram, setup guide, usage examples
-- MIT license and contribution guidelines
-- ESLint + Prettier for consistent code style
-- Test suite with meaningful coverage
-- GitHub Actions CI pipeline
-- Clean, generic documentation (no hardcoded user paths)
+| Biome over ESLint+Prettier | Single tool, Rust-based, faster, simpler config | Good |
+| 3-file server split (bridge/tools/index) | Testability without over-engineering | Good |
+| Vitest over Jest/node:test | Native ESM+TS, MCP SDK uses it, InMemoryTransport for testing | Good |
+| Keep .planning/ in repo | Educational value showing AI-native engineering process | Good |
+| Keep git history | Educational value, no sensitive data in code files | Good |
 
 ---
-*Last updated: 2026-02-10 after v2 milestone start*
+*Last updated: 2026-02-10 after v2 Open Source Release milestone*

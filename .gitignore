@@ -1,3 +1,11 @@
 node_modules/
 certs/
 *.pem
+.DS_Store
+.env
+.vscode/
+.idea/
+*.swp
+coverage/
+*.tgz
+*.tsbuildinfo

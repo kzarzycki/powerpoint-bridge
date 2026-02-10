@@ -1,11 +1,40 @@
 {
   "name": "powerpoint-bridge",
-  "version": "0.2.0",
+  "version": "0.1.0",
+  "description": "MCP server that lets AI assistants manipulate live PowerPoint presentations via Office.js",
   "type": "module",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zarzn/powerpoint-bridge.git"
+  },
+  "homepage": "https://github.com/zarzn/powerpoint-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/zarzn/powerpoint-bridge/issues"
+  },
+  "keywords": [
+    "mcp",
+    "powerpoint",
+    "office-js",
+    "live-editing",
+    "presentation",
+    "claude"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "start": "node server/index.ts",
     "typecheck": "tsc --noEmit",
     "setup-certs": "mkdir -p certs && mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem localhost 127.0.0.1 ::1",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "check": "biome check . && tsc --noEmit && vitest run",
     "sideload": "mkdir -p ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef && cp addin/manifest.xml ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/"
   },
   "dependencies": {
@@ -14,8 +43,11 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.14",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.9.0"
+    "@vitest/coverage-v8": "^4.0.18",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.18"
   }
 }

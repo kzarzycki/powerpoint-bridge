@@ -246,16 +246,16 @@ function parseJsonBody(req: IncomingMessage): Promise<unknown> {
 ```bash
 # Find mkcert CA root
 mkcert -CAROOT
-# Output: /Users/zarz/Library/Application Support/mkcert
+# Output: $(mkcert -CAROOT)
 
 # Option 1: Environment variable when launching Claude Code
-NODE_EXTRA_CA_CERTS="/Users/zarz/Library/Application Support/mkcert/rootCA.pem" claude
+NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" claude
 
 # Option 2: Add to Claude Code settings.json (persistent)
 # In ~/.claude/settings.json:
 {
   "env": {
-    "NODE_EXTRA_CA_CERTS": "/Users/zarz/Library/Application Support/mkcert/rootCA.pem"
+    "NODE_EXTRA_CA_CERTS": "$(mkcert -CAROOT)/rootCA.pem"
   }
 }
 ```
