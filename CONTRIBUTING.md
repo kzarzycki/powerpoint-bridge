@@ -9,7 +9,7 @@
 ## Development Setup
 
 ```bash
-git clone https://github.com/zarzn/powerpoint-bridge.git
+git clone https://github.com/kzarzycki/powerpoint-bridge.git
 cd powerpoint-bridge
 npm install
 

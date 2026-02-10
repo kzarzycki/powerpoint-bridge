@@ -40,7 +40,7 @@ brew install mkcert node
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/zarzn/powerpoint-bridge.git
+git clone https://github.com/kzarzycki/powerpoint-bridge.git
 cd powerpoint-bridge
 npm install
 ```

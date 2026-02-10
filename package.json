@@ -7,11 +7,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zarzn/powerpoint-bridge.git"
+    "url": "git+https://github.com/kzarzycki/powerpoint-bridge.git"
   },
-  "homepage": "https://github.com/zarzn/powerpoint-bridge#readme",
+  "homepage": "https://github.com/kzarzycki/powerpoint-bridge#readme",
   "bugs": {
-    "url": "https://github.com/zarzn/powerpoint-bridge/issues"
+    "url": "https://github.com/kzarzycki/powerpoint-bridge/issues"
   },
   "keywords": [
     "mcp",
