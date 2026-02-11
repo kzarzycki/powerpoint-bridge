@@ -7,6 +7,10 @@ An MCP server that lets AI assistants manipulate **live, open** PowerPoint prese
 
 Unlike file-based tools (python-pptx), PowerPoint Bridge works with presentations that are already open — changes appear instantly, and you keep full access to PowerPoint's UI, animations, and formatting.
 
+## Motivation
+
+This project was inspired by the [Claude in PowerPoint](https://support.anthropic.com/en/articles/11360939-using-claude-in-powerpoint) add-in. The first time I tried it, I was amazed — it edits live, open decks via Office.js, and the results are far better than file-based pptx tools. But it only works inside the add-in, which means no access to CLAUDE.md, skills, or any other Claude Code features. PowerPoint Bridge brings those same Office.js capabilities to Claude Code (and any MCP client) so you get live editing with the full power of your coding environment.
+
 ## Architecture
 
 ```
