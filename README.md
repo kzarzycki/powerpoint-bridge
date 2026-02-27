@@ -41,40 +41,38 @@ brew install mkcert node
 
 ## Quick Start
 
-### 1. Clone and install
-
 ```bash
-git clone https://github.com/kzarzycki/powerpoint-bridge.git
-cd powerpoint-bridge
+git clone https://github.com/kzarzycki/powerpoint-bridge.git ~/powerpoint-bridge
+cd ~/powerpoint-bridge
 npm install
-```
-
-### 2. Generate TLS certificates
-
-PowerPoint's WKWebView requires WSS (secure WebSocket), so we need local TLS certs:
-
-```bash
 mkcert -install    # One-time: adds mkcert CA to macOS Keychain (requires password)
-npm run setup-certs
+npm run setup      # Generates certs, sideloads add-in, installs Claude Code skill
 ```
 
-### 3. Sideload the add-in into PowerPoint
-
-```bash
-npm run sideload
-```
-
-Then restart PowerPoint. The add-in will appear in the **Home** ribbon tab.
-
-### 4. Start the bridge server
+Then restart PowerPoint, open a presentation, and click the bridge add-in in the ribbon. Start the server:
 
 ```bash
 npm start
 ```
 
-### 5. Open a presentation and load the add-in
+### Using with Claude Code
 
-Open any PowerPoint file, then click the bridge add-in button in the ribbon. The taskpane should show "Connected".
+After setup, the `powerpoint-live` skill is globally available. In any project, ask Claude:
+
+> "enable powerpoint mcp in this project"
+
+Claude will add the MCP configuration and verify connectivity. Or add manually to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "powerpoint-bridge": {
+      "type": "http",
+      "url": "http://localhost:3001/mcp"
+    }
+  }
+}
+```
 
 ## MCP Client Configuration
 
@@ -130,6 +128,9 @@ Add to your workspace `.vscode/mcp.json`:
 | `list_presentations` | Lists all connected presentations with their IDs and status |
 | `get_presentation` | Returns slide structure (IDs, shape counts, shape names/types) |
 | `get_slide` | Returns detailed shape info for a slide (text, positions, sizes, fills) |
+| `get_slide_image` | Captures a visual screenshot of a slide as PNG (requires PowerPoint 16.96+) |
+| `export_slide` | Exports a slide as a standalone Base64-encoded .pptx for copying between presentations |
+| `insert_slides` | Inserts slides from a Base64-encoded .pptx with formatting and position control |
 | `execute_officejs` | Runs arbitrary Office.js code inside the live presentation |
 
 When multiple presentations are open, pass `presentationId` (from `list_presentations`) to target a specific one.

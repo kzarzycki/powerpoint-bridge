@@ -2,7 +2,7 @@
 
 ## Project Goal
 
-Build a system that lets Claude Code manipulate **live, open** PowerPoint presentations on macOS via Office.js APIs. This is the first such solution - all existing macOS tools use python-pptx (file-based, no live editing).
+Build a system that lets Claude Code manipulate **live, open** PowerPoint presentations on macOS via Office.js APIs. First live-editing MCP solution for macOS — all others use python-pptx (file-based).
 
 ## Architecture
 
@@ -34,87 +34,19 @@ Three components in one repo:
 - Required because WKWebView enforces WSS (no plain ws://)
 - `.gitignore`d
 
+## Usage Documentation
+
+For tool reference, code patterns, and usage — see the **powerpoint-live** skill at `.claude/skills/powerpoint-live/`.
+
 ## Technical Constraints
 
 - **WSS mandatory** - macOS WKWebView won't connect to `ws://localhost`, must use `wss://`
-- **Add-in cannot host servers** - it's sandboxed in WKWebView, can only make outbound connections
+- **Add-in cannot host servers** - sandboxed in WKWebView, can only make outbound connections
 - **No image API** - Office.js has no direct image insertion; workaround is Base64 slide import
 - **No charts** - Office.js cannot create charts
 - **No animations** - not exposed in stable APIs
 - **Solid fills only** - no gradients, effects, or shadows
 - **Points for positioning** - 1 point = 1/72 inch
-
-## Available Office.js Capabilities (Requirement Sets 1.1-1.9)
-
-What we CAN do:
-- Create presentations, add/delete slides
-- Add geometric shapes (rectangle, circle, triangle, etc.), lines, text boxes
-- Position and size shapes (left, top, width, height in points)
-- Set text content and font color
-- Set solid fill colors
-- Group/ungroup shapes
-- Create and format tables
-- Manage hyperlinks
-- Set custom properties and metadata tags
-- Select slides, shapes, text ranges programmatically
-- Insert slides from other presentations (Base64)
-
-## Build Order
-
-### Phase 1: Minimal Viable Bridge
-1. Generate TLS certs with `mkcert`
-2. Create bare-bones add-in (HTML + Office.js + WS client)
-3. Create Node.js server (HTTPS + WSS + static file serving)
-4. Create manifest.xml and sideload into PowerPoint
-5. Test: add-in connects, send a command, shape appears
-
-### Phase 2: MCP Integration
-6. Add MCP server (stdio) to the Node.js bridge server
-7. Define initial tool set: `add_slide`, `add_shape`, `set_text`, `get_slides`
-8. Configure in Claude Code's MCP settings
-9. Test: Claude Code creates shapes via natural language
-
-### Phase 3: Full Tool Set
-10. Expand tools: tables, formatting, positioning, slide management
-11. Add read operations: get slide contents, shape properties
-12. Error handling and reconnection logic
-13. Command queuing for when add-in disconnects
-
-## Project Setup
-
-```bash
-# Prerequisites
-brew install mkcert node
-
-# Generate certs
-mkcert -install
-mkdir -p certs
-cd certs && mkcert localhost 127.0.0.1 ::1 && cd ..
-
-# Install dependencies
-npm install
-
-# Start bridge server
-npm start
-
-# Sideload add-in (copy manifest to PowerPoint's wef directory)
-cp addin/manifest.xml ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/
-```
-
-## MCP Configuration (for Claude Code)
-
-Add to your project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "powerpoint-bridge": {
-      "type": "http",
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
-```
 
 ## Key Technical Decisions
 
