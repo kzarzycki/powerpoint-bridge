@@ -129,8 +129,7 @@ Add to your workspace `.vscode/mcp.json`:
 | `get_presentation` | Returns slide structure (IDs, shape counts, shape names/types) |
 | `get_slide` | Returns detailed shape info for a slide (text, positions, sizes, fills) |
 | `get_slide_image` | Captures a visual screenshot of a slide as PNG (requires PowerPoint 16.96+) |
-| `export_slide` | Exports a slide as a standalone Base64-encoded .pptx for copying between presentations |
-| `insert_slides` | Inserts slides from a Base64-encoded .pptx with formatting and position control |
+| `copy_slides` | Copies slides between two open presentations (data stays server-side, never in Claude context) |
 | `execute_officejs` | Runs arbitrary Office.js code inside the live presentation |
 
 When multiple presentations are open, pass `presentationId` (from `list_presentations`) to target a specific one.

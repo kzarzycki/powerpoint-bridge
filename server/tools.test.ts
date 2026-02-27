@@ -35,11 +35,11 @@ describe('MCP Tools', () => {
     pool = new ConnectionPool(100)
   })
 
-  it('lists all 7 tools', async () => {
+  it('lists all 6 tools', async () => {
     const { client } = await setupMcpClient(pool)
     const result = await client.listTools()
     const names = result.tools.map((t) => t.name).sort()
-    expect(names).toEqual(['execute_officejs', 'export_slide', 'get_presentation', 'get_slide', 'get_slide_image', 'insert_slides', 'list_presentations'])
+    expect(names).toEqual(['copy_slides', 'execute_officejs', 'get_presentation', 'get_slide', 'get_slide_image', 'list_presentations'])
   })
 
   describe('list_presentations', () => {
@@ -164,124 +164,171 @@ describe('MCP Tools', () => {
     })
   })
 
-  describe('export_slide', () => {
-    it('sends exportAsBase64 code and returns result', async () => {
-      const ws = mockWs()
-      pool.add('test.pptx', {
-        ws,
+  describe('copy_slides', () => {
+    it('exports from source and inserts into destination', async () => {
+      const sourceWs = mockWs()
+      const destWs = mockWs()
+      pool.add('source.pptx', {
+        ws: sourceWs,
         ready: true,
-        presentationId: 'test.pptx',
-        filePath: null,
+        presentationId: 'source.pptx',
+        filePath: '/path/source.pptx',
+      })
+      pool.add('dest.pptx', {
+        ws: destWs,
+        ready: true,
+        presentationId: 'dest.pptx',
+        filePath: '/path/dest.pptx',
       })
 
       const { client } = await setupMcpClient(pool)
 
       const toolPromise = client.callTool({
-        name: 'export_slide',
-        arguments: { slideIndex: 0 },
+        name: 'copy_slides',
+        arguments: {
+          sourceSlideIndex: 2,
+          sourcePresentationId: 'source.pptx',
+          destinationPresentationId: 'dest.pptx',
+        },
       })
 
+      // Wait for export command to be sent to source
       await new Promise((r) => setTimeout(r, 10))
 
-      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
-      expect(sentJson.action).toBe('executeCode')
-      expect(sentJson.params.code).toContain('exportAsBase64')
+      const exportJson = JSON.parse((sourceWs.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(exportJson.action).toBe('executeCode')
+      expect(exportJson.params.code).toContain('exportAsBase64')
 
-      pool.handleResponse(sentJson.id, 'response', {
+      // Respond with exported Base64
+      pool.handleResponse(exportJson.id, 'response', {
         base64: 'UEsDBBQ=',
-        base64Length: 8,
-        slideIndex: 0,
-        slideId: 'slide-1',
+        slideIndex: 2,
+        slideId: 'slide-src',
       })
 
-      const result = await toolPromise
-      const text = (result.content as Array<{ text: string }>)[0].text
-      const parsed = JSON.parse(text)
-      expect(parsed.exportId).toBeDefined()
-      expect(parsed.slideIndex).toBe(0)
-      expect(parsed.sizeBytes).toBe(8)
-    })
-
-    it('returns error when no connections', async () => {
-      const { client } = await setupMcpClient(pool)
-      const result = await client.callTool({
-        name: 'export_slide',
-        arguments: { slideIndex: 0 },
-      })
-      expect(result.isError).toBe(true)
-    })
-  })
-
-  describe('insert_slides', () => {
-    it('sends insertSlidesFromBase64 code with defaults', async () => {
-      const ws = mockWs()
-      pool.add('test.pptx', {
-        ws,
-        ready: true,
-        presentationId: 'test.pptx',
-        filePath: null,
-      })
-
-      const { client } = await setupMcpClient(pool)
-
-      const toolPromise = client.callTool({
-        name: 'insert_slides',
-        arguments: { base64: 'UEsDBBQ=' },
-      })
-
+      // Wait for insert command to be sent to destination
       await new Promise((r) => setTimeout(r, 10))
 
-      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
-      expect(sentJson.action).toBe('executeCode')
-      expect(sentJson.params.code).toContain('insertSlidesFromBase64')
+      const insertJson = JSON.parse((destWs.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(insertJson.action).toBe('executeCode')
+      expect(insertJson.params.code).toContain('insertSlidesFromBase64')
+      expect(insertJson.params.code).toContain('UEsDBBQ=')
 
-      pool.handleResponse(sentJson.id, 'response', { slideCount: 5 })
+      // Respond with insert result
+      pool.handleResponse(insertJson.id, 'response', { slideCount: 8 })
 
       const result = await toolPromise
       const text = (result.content as Array<{ text: string }>)[0].text
       const parsed = JSON.parse(text)
-      expect(parsed.slideCount).toBe(5)
+      expect(parsed.copied.slideIndex).toBe(2)
+      expect(parsed.copied.slideId).toBe('slide-src')
+      expect(parsed.destination.slideCount).toBe(8)
     })
 
     it('passes formatting and targetSlideId options', async () => {
-      const ws = mockWs()
-      pool.add('test.pptx', {
-        ws,
+      const sourceWs = mockWs()
+      const destWs = mockWs()
+      pool.add('a.pptx', {
+        ws: sourceWs,
         ready: true,
-        presentationId: 'test.pptx',
+        presentationId: 'a.pptx',
+        filePath: null,
+      })
+      pool.add('b.pptx', {
+        ws: destWs,
+        ready: true,
+        presentationId: 'b.pptx',
         filePath: null,
       })
 
       const { client } = await setupMcpClient(pool)
 
       const toolPromise = client.callTool({
-        name: 'insert_slides',
+        name: 'copy_slides',
         arguments: {
-          base64: 'UEsDBBQ=',
+          sourceSlideIndex: 0,
+          sourcePresentationId: 'a.pptx',
+          destinationPresentationId: 'b.pptx',
           formatting: 'UseDestinationTheme',
           targetSlideId: '267#',
-          sourceSlideIds: ['256#', '267#'],
         },
       })
 
       await new Promise((r) => setTimeout(r, 10))
 
-      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
-      expect(sentJson.params.code).toContain('UseDestinationTheme')
-      expect(sentJson.params.code).toContain('267#')
-      expect(sentJson.params.code).toContain('sourceSlideIds')
+      const exportJson = JSON.parse((sourceWs.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      pool.handleResponse(exportJson.id, 'response', {
+        base64: 'DATA',
+        slideIndex: 0,
+        slideId: 'slide-0',
+      })
 
-      pool.handleResponse(sentJson.id, 'response', { slideCount: 7 })
+      await new Promise((r) => setTimeout(r, 10))
+
+      const insertJson = JSON.parse((destWs.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(insertJson.params.code).toContain('UseDestinationTheme')
+      expect(insertJson.params.code).toContain('267#')
+
+      pool.handleResponse(insertJson.id, 'response', { slideCount: 4 })
       await toolPromise
     })
 
-    it('returns error when no connections', async () => {
+    it('returns error when source presentation not found', async () => {
+      const ws = mockWs()
+      pool.add('dest.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'dest.pptx',
+        filePath: null,
+      })
+
       const { client } = await setupMcpClient(pool)
       const result = await client.callTool({
-        name: 'insert_slides',
-        arguments: { base64: 'UEsDBBQ=' },
+        name: 'copy_slides',
+        arguments: {
+          sourceSlideIndex: 0,
+          sourcePresentationId: 'missing.pptx',
+          destinationPresentationId: 'dest.pptx',
+        },
       })
       expect(result.isError).toBe(true)
+      const text = (result.content as Array<{ text: string }>)[0].text
+      expect(text).toContain('missing.pptx')
+    })
+
+    it('returns error when destination presentation not found', async () => {
+      const ws = mockWs()
+      pool.add('source.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'source.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'copy_slides',
+        arguments: {
+          sourceSlideIndex: 0,
+          sourcePresentationId: 'source.pptx',
+          destinationPresentationId: 'missing.pptx',
+        },
+      })
+
+      // Export succeeds
+      await new Promise((r) => setTimeout(r, 10))
+      const exportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      pool.handleResponse(exportJson.id, 'response', {
+        base64: 'DATA',
+        slideIndex: 0,
+        slideId: 'slide-0',
+      })
+
+      const result = await toolPromise
+      expect(result.isError).toBe(true)
+      const text = (result.content as Array<{ text: string }>)[0].text
+      expect(text).toContain('missing.pptx')
     })
   })
 

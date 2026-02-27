@@ -116,9 +116,30 @@ var result = slide.getImageAsBase64({ width: 1280, height: 720 });
 await context.sync();
 ```
 
-## Exporting Slides
+## Copying Slides Between Presentations
 
-Use the `export_slide` MCP tool to export a slide as a standalone Base64-encoded .pptx. This is useful for copying slides between presentations via `insert_slides`.
+Use the `copy_slides` MCP tool to copy slides between two open presentations. The Base64 data transfers server-side (Add-in A → Bridge Server → Add-in B) and never enters Claude's context.
+
+```
+copy_slides(
+  sourceSlideIndex: 2,
+  sourcePresentationId: "deck-a.pptx",
+  destinationPresentationId: "deck-b.pptx",
+  formatting: "UseDestinationTheme",  // optional
+  targetSlideId: "267#"               // optional: insert after this slide
+)
+```
+
+**Formatting options:**
+- `"KeepSourceFormatting"` (default) — inserted slides keep their original theme/colors
+- `"UseDestinationTheme"` — inserted slides adopt the target presentation's theme
+
+**Slide ID formats** for `targetSlideId`:
+- `"267#"` — slide ID only
+- `"#763315295"` — creation ID only
+- `"267#763315295"` — both
+
+Under the hood, `copy_slides` calls `slide.exportAsBase64()` on the source and `presentation.insertSlidesFromBase64()` on the destination. For direct use via `execute_officejs`:
 
 ```javascript
 // Export a slide to Base64 .pptx (API 1.8+)
@@ -126,38 +147,14 @@ var slide = slides.items[0];
 var result = slide.exportAsBase64();
 await context.sync();
 return result.value; // Base64 .pptx string
-```
 
-## Inserting Slides
-
-Use the `insert_slides` MCP tool to insert slides from a Base64-encoded .pptx into the current presentation. Supports selecting specific source slides, target position, and formatting mode.
-
-```javascript
-// Insert all slides from a Base64 .pptx at the beginning
-context.presentation.insertSlidesFromBase64(base64String);
-await context.sync();
-
-// Insert with options
+// Insert slides from Base64 .pptx
 context.presentation.insertSlidesFromBase64(base64String, {
-  formatting: "UseDestinationTheme",  // or "KeepSourceFormatting"
-  targetSlideId: "267#",              // insert after this slide
-  sourceSlideIds: ["256#", "267#"]    // only these slides from source
+  formatting: "UseDestinationTheme",
+  targetSlideId: "267#"
 });
 await context.sync();
 ```
-
-**Slide ID formats** for `targetSlideId` and `sourceSlideIds`:
-- `"267#"` — slide ID only
-- `"#763315295"` — creation ID only
-- `"267#763315295"` — both
-
-**Common workflow — copy slide between presentations:**
-1. `export_slide` from source presentation (get Base64)
-2. `insert_slides` into destination presentation (pass Base64)
-
-**Formatting options:**
-- `"KeepSourceFormatting"` — inserted slides keep their original theme/colors
-- `"UseDestinationTheme"` — inserted slides adopt the target presentation's theme
 
 ## Reading Content
 

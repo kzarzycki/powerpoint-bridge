@@ -40,8 +40,7 @@ If the bridge has never been installed, see [setup guide](references/setup.md).
 | `get_presentation` | Get slide structure (indices, shape names/types) | `presentationId?` |
 | `get_slide` | Get detailed shapes (positions, text, colors) | `slideIndex`, `presentationId?` |
 | `get_slide_image` | Capture slide screenshot as PNG | `slideIndex`, `width?` (default 720), `presentationId?` |
-| `export_slide` | Export slide as Base64 .pptx (for copying between presentations) | `slideIndex`, `presentationId?` |
-| `insert_slides` | Insert slides from Base64 .pptx into current presentation | `base64`, `formatting?`, `targetSlideId?`, `sourceSlideIds?`, `presentationId?` |
+| `copy_slides` | Copy slides between two open presentations (data stays server-side) | `sourceSlideIndex`, `sourcePresentationId`, `destinationPresentationId`, `formatting?`, `targetSlideId?` |
 | `execute_officejs` | Run arbitrary Office.js code in the live presentation | `code`, `presentationId?` |
 
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
