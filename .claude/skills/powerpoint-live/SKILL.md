@@ -11,26 +11,9 @@ Edit live, open PowerPoint presentations through an MCP bridge. Changes appear i
 Claude Code  ──MCP HTTP (localhost:3001)──>  Bridge Server  ──WSS──>  PowerPoint Add-in  ──>  Live Presentation
 ```
 
-## Enabling in a Project
+## Setup
 
-When asked to enable, configure, or set up PowerPoint MCP in a project:
-
-1. Add to the project's `.mcp.json` (create if missing):
-   ```json
-   {
-     "mcpServers": {
-       "powerpoint-bridge": {
-         "type": "http",
-         "url": "http://localhost:3001/mcp"
-       }
-     }
-   }
-   ```
-2. Verify server is reachable: `curl -s http://localhost:3001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'`
-3. If server unreachable, direct user: "Start the bridge server: `cd ~/powerpoint-bridge && npm start`"
-4. Test: call `list_presentations` to confirm connectivity
-
-If the bridge has never been installed, see [setup guide](references/setup.md).
+When asked to enable, configure, or set up PowerPoint MCP — follow the [setup guide](references/setup.md). It covers both global installation (run once) and per-project configuration (idempotent).
 
 ## MCP Tools
 
