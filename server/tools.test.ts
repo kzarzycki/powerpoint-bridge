@@ -6,6 +6,8 @@ import type { WebSocket } from 'ws'
 import { ConnectionPool } from './bridge.ts'
 import { registerTools } from './tools.ts'
 
+vi.mock('node:fs', () => ({ readFileSync: vi.fn() }))
+
 function mockWs(): WebSocket {
   return { send: vi.fn(), readyState: 1 } as unknown as WebSocket
 }
@@ -35,11 +37,11 @@ describe('MCP Tools', () => {
     pool = new ConnectionPool(100)
   })
 
-  it('lists all 6 tools', async () => {
+  it('lists all 7 tools', async () => {
     const { client } = await setupMcpClient(pool)
     const result = await client.listTools()
     const names = result.tools.map((t) => t.name).sort()
-    expect(names).toEqual(['copy_slides', 'execute_officejs', 'get_presentation', 'get_slide', 'get_slide_image', 'list_presentations'])
+    expect(names).toEqual(['copy_slides', 'execute_officejs', 'get_presentation', 'get_slide', 'get_slide_image', 'insert_image', 'list_presentations'])
   })
 
   describe('list_presentations', () => {
@@ -329,6 +331,195 @@ describe('MCP Tools', () => {
       expect(result.isError).toBe(true)
       const text = (result.content as Array<{ text: string }>)[0].text
       expect(text).toContain('missing.pptx')
+    })
+  })
+
+  describe('insert_image', () => {
+    it('passes base64 data directly into the code string', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'insert_image',
+        arguments: {
+          source: 'iVBORw0KGgoAAAANSUhEUg==',
+          sourceType: 'base64',
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sentJson.action).toBe('executeCode')
+      expect(sentJson.params.code).toContain('setSelectedDataAsync')
+      expect(sentJson.params.code).toContain('iVBORw0KGgoAAAANSUhEUg==')
+      expect(sentJson.params.code).toContain('CoercionType.Image')
+
+      pool.handleResponse(sentJson.id, 'response', { success: true })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.success).toBe(true)
+    })
+
+    it('reads file and base64 encodes it', async () => {
+      const { readFileSync } = await import('node:fs')
+      vi.mocked(readFileSync).mockReturnValue(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'insert_image',
+        arguments: {
+          source: '/path/to/image.png',
+          sourceType: 'file',
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      expect(readFileSync).toHaveBeenCalledWith('/path/to/image.png')
+
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sentJson.params.code).toContain('setSelectedDataAsync')
+      // The base64 of [0x89, 0x50, 0x4e, 0x47] is "iVBORw=="
+      expect(sentJson.params.code).toContain(Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'))
+
+      pool.handleResponse(sentJson.id, 'response', { success: true })
+      await toolPromise
+    })
+
+    it('fetches URL and base64 encodes it', async () => {
+      const mockArrayBuffer = new Uint8Array([1, 2, 3]).buffer
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(mockArrayBuffer),
+      })
+
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'insert_image',
+        arguments: {
+          source: 'https://example.com/image.png',
+          sourceType: 'url',
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('https://example.com/image.png')
+
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sentJson.params.code).toContain('setSelectedDataAsync')
+      expect(sentJson.params.code).toContain(Buffer.from(new Uint8Array([1, 2, 3])).toString('base64'))
+
+      pool.handleResponse(sentJson.id, 'response', { success: true })
+      await toolPromise
+    })
+
+    it('wraps with goToByIdAsync when slideIndex is provided', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'insert_image',
+        arguments: {
+          source: 'AAAA',
+          sourceType: 'base64',
+          slideIndex: 2,
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      // slideIndex 2 (0-based) → goToByIdAsync(3, ...) (1-based)
+      expect(sentJson.params.code).toContain('goToByIdAsync(3,')
+      expect(sentJson.params.code).toContain('GoToType.Index')
+
+      pool.handleResponse(sentJson.id, 'response', { success: true })
+      await toolPromise
+    })
+
+    it('includes positioning options when provided', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'insert_image',
+        arguments: {
+          source: 'BBBB',
+          sourceType: 'base64',
+          left: 100,
+          top: 50,
+          width: 400,
+          height: 300,
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sentJson.params.code).toContain('imageLeft: 100')
+      expect(sentJson.params.code).toContain('imageTop: 50')
+      expect(sentJson.params.code).toContain('imageWidth: 400')
+      expect(sentJson.params.code).toContain('imageHeight: 300')
+
+      pool.handleResponse(sentJson.id, 'response', { success: true })
+      await toolPromise
+    })
+
+    it('returns error when no connections', async () => {
+      const { client } = await setupMcpClient(pool)
+      const result = await client.callTool({
+        name: 'insert_image',
+        arguments: {
+          source: 'AAAA',
+          sourceType: 'base64',
+        },
+      })
+      expect(result.isError).toBe(true)
+      const text = (result.content as Array<{ text: string }>)[0].text
+      expect(text).toContain('No presentations connected')
     })
   })
 

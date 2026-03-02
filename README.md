@@ -130,13 +130,14 @@ Add to your workspace `.vscode/mcp.json`:
 | `get_slide` | Returns detailed shape info for a slide (text, positions, sizes, fills) |
 | `get_slide_image` | Captures a visual screenshot of a slide as PNG (requires PowerPoint 16.96+) |
 | `copy_slides` | Copies slides between two open presentations (data stays server-side, never in Claude context) |
+| `insert_image` | Inserts an image from a file path, URL, or base64 data onto a slide |
 | `execute_officejs` | Runs arbitrary Office.js code inside the live presentation |
 
 When multiple presentations are open, pass `presentationId` (from `list_presentations`) to target a specific one.
 
 ## Limitations
 
-- **No images** — Office.js has no direct image insertion API; workaround is Base64 slide import
+- **Limited image control** — Images inserted via Common API (`insert_image` tool), not shape API; positioning works but no shape-level manipulation after insertion
 - **No charts** — Office.js cannot create charts programmatically
 - **No animations** — Not exposed in stable APIs
 - **Solid fills only** — No gradients, effects, or shadows
