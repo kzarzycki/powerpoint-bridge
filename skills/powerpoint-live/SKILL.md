@@ -13,7 +13,7 @@ Claude Code  ──MCP HTTP (localhost:3001)──>  Bridge Server  ──WSS─
 
 ## Setup
 
-When asked to enable, configure, or set up PowerPoint MCP — follow the [setup guide](references/setup.md). It covers both global installation (run once) and per-project configuration (idempotent).
+When asked to enable or configure PowerPoint MCP in a project — follow the [setup guide](references/setup.md).
 
 ## MCP Tools
 

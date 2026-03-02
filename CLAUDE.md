@@ -36,7 +36,7 @@ Three components in one repo:
 
 ## Usage Documentation
 
-For tool reference, code patterns, and usage — see the **powerpoint-live** skill at `.claude/skills/powerpoint-live/`.
+For tool reference, code patterns, and usage — see the **powerpoint-live** skill at `skills/powerpoint-live/`.
 
 ## Technical Constraints
 

@@ -30,7 +30,7 @@ echo "[add-in] Manifest sideloaded to PowerPoint"
 
 # 3. Install skill globally
 mkdir -p ~/.claude/skills
-ln -sfn "$REPO_DIR/.claude/skills/powerpoint-live" ~/.claude/skills/powerpoint-live
+ln -sfn "$REPO_DIR/skills/powerpoint-live" ~/.claude/skills/powerpoint-live
 echo "[skill] Installed globally at ~/.claude/skills/powerpoint-live"
 
 echo ""

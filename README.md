@@ -26,6 +26,7 @@ Three components in one repo:
 
 - **`addin/`** — Office.js taskpane add-in that loads inside PowerPoint and connects as a WebSocket client
 - **`server/`** — Node.js bridge server: HTTPS + WSS + MCP HTTP transport
+- **`skills/powerpoint-live/`** — Claude Code skill with tool docs, code patterns, and setup guide. Installed globally by `npm run setup`.
 - **`certs/`** — Local TLS certificates (generated, gitignored)
 
 ## Prerequisites
@@ -39,7 +40,17 @@ Three components in one repo:
 brew install mkcert node
 ```
 
-## Quick Start
+## Install
+
+### Let Claude do it
+
+```bash
+git clone https://github.com/kzarzycki/powerpoint-bridge.git ~/powerpoint-bridge
+```
+
+Then tell Claude: "install powerpoint bridge from ~/powerpoint-bridge" — it will handle `npm install`, certs, sideloading, and per-project config.
+
+### Manual install
 
 ```bash
 git clone https://github.com/kzarzycki/powerpoint-bridge.git ~/powerpoint-bridge
@@ -55,41 +66,9 @@ Then restart PowerPoint, open a presentation, and click the bridge add-in in the
 npm start
 ```
 
-### Using with Claude Code
+After setup, the `powerpoint-live` skill is globally available. In any project, ask Claude: "enable powerpoint mcp in this project". See the [setup guide](skills/powerpoint-live/references/setup.md) for per-project configuration details.
 
-After setup, the `powerpoint-live` skill is globally available. In any project, ask Claude:
-
-> "enable powerpoint mcp in this project"
-
-Claude will add the MCP configuration and verify connectivity. Or add manually to your project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "powerpoint-bridge": {
-      "type": "http",
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
-```
-
-## MCP Client Configuration
-
-### Claude Code
-
-Add to your project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "powerpoint-bridge": {
-      "type": "http",
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
-```
+## Other MCP Clients
 
 ### Claude Desktop
 
