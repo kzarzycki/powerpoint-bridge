@@ -20,7 +20,7 @@ npm run setup
 `npm run setup` performs:
 1. Generates TLS certificates via `mkcert` (required for WSS in WKWebView)
 2. Copies add-in manifest to PowerPoint's sideload directory
-3. Symlinks the skill to `~/.claude/skills/powerpoint-live`
+3. Symlinks `skills/powerpoint-live` to `~/.claude/skills/powerpoint-live`
 
 ## Manual Steps
 
