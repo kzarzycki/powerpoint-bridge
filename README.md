@@ -42,15 +42,7 @@ brew install mkcert node
 
 ## Install
 
-### Option A: Skill only (`npx skills add`)
-
-```bash
-npx skills add kzarzycki/powerpoint-bridge
-```
-
-This installs the Claude Code skill so Claude knows how to use the bridge. You still need the bridge server running — see Option B or C for full setup.
-
-### Option B: Full install (let Claude do it)
+### Let Claude do it
 
 ```bash
 git clone https://github.com/kzarzycki/powerpoint-bridge.git ~/powerpoint-bridge
@@ -58,7 +50,7 @@ git clone https://github.com/kzarzycki/powerpoint-bridge.git ~/powerpoint-bridge
 
 Then tell Claude: "install powerpoint bridge from ~/powerpoint-bridge" — it will handle `npm install`, certs, sideloading, and per-project config.
 
-### Option C: Full manual install
+### Manual install
 
 ```bash
 git clone https://github.com/kzarzycki/powerpoint-bridge.git ~/powerpoint-bridge
