@@ -42,7 +42,7 @@ For tool reference, code patterns, and usage — see the **powerpoint-live** ski
 
 - **WSS mandatory** - macOS WKWebView won't connect to `ws://localhost`, must use `wss://`
 - **Add-in cannot host servers** - sandboxed in WKWebView, can only make outbound connections
-- **No image API** - Office.js has no direct image insertion; workaround is Base64 slide import
+- **Limited image API** - Image insertion via Common API `setSelectedDataAsync` (`insert_image` tool); no shape-level `addPicture()` yet (BETA only)
 - **No charts** - Office.js cannot create charts
 - **No animations** - not exposed in stable APIs
 - **Solid fills only** - no gradients, effects, or shadows

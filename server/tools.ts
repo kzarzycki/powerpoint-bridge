@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { ConnectionPool } from './bridge.ts'
@@ -329,6 +330,94 @@ export function registerTools(
             null,
             2,
           ) + (warning ?? '')
+        return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: insert_image ---
+  server.tool(
+    'insert_image',
+    'Inserts an image onto a slide using Office.js setSelectedDataAsync with CoercionType.Image. Accepts a file path, URL, or raw base64 data. Optionally navigate to a specific slide first and control position/size in points.',
+    {
+      source: z.string().describe('File path, URL, or base64 image data depending on sourceType'),
+      sourceType: z
+        .enum(['file', 'url', 'base64'])
+        .describe('How to interpret source: "file" reads from disk, "url" fetches from network, "base64" uses data directly'),
+      slideIndex: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe('Zero-based slide index to navigate to before inserting. If omitted, inserts on the currently active slide.'),
+      left: z.number().optional().describe('Horizontal position in points (1 point = 1/72 inch)'),
+      top: z.number().optional().describe('Vertical position in points'),
+      width: z.number().optional().describe('Image width in points'),
+      height: z.number().optional().describe('Image height in points'),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ source, sourceType, slideIndex, left, top, width, height, presentationId }) => {
+      try {
+        // Step 1: Resolve image to base64
+        let base64Data: string
+        if (sourceType === 'file') {
+          base64Data = readFileSync(source).toString('base64')
+        } else if (sourceType === 'url') {
+          const resp = await fetch(source)
+          if (!resp.ok) {
+            throw new Error(`Failed to fetch image from URL: ${resp.status} ${resp.statusText}`)
+          }
+          const buf = await resp.arrayBuffer()
+          base64Data = Buffer.from(buf).toString('base64')
+        } else {
+          base64Data = source
+        }
+
+        // Step 2: Build options object string with only provided params
+        const optionsParts: string[] = ['coercionType: Office.CoercionType.Image']
+        if (left !== undefined) optionsParts.push(`imageLeft: ${left}`)
+        if (top !== undefined) optionsParts.push(`imageTop: ${top}`)
+        if (width !== undefined) optionsParts.push(`imageWidth: ${width}`)
+        if (height !== undefined) optionsParts.push(`imageHeight: ${height}`)
+        const optionsStr = `{ ${optionsParts.join(', ')} }`
+
+        // Step 3: Build the setSelectedDataAsync call
+        const insertCall = `Office.context.document.setSelectedDataAsync("${base64Data}", ${optionsStr}, function(result) {
+        if (result.status === Office.AsyncResultStatus.Succeeded) {
+          resolve({ success: true });
+        } else {
+          reject(new Error(result.error.message));
+        }
+      });`
+
+        // Step 4: Wrap with goToByIdAsync if slideIndex is provided
+        let code: string
+        if (slideIndex !== undefined) {
+          code = `return new Promise(function(resolve, reject) {
+      Office.context.document.goToByIdAsync(${slideIndex + 1}, Office.GoToType.Index, function(navResult) {
+        if (navResult.status !== Office.AsyncResultStatus.Succeeded) {
+          reject(new Error("Navigation failed: " + navResult.error.message));
+          return;
+        }
+        ${insertCall}
+      });
+    });`
+        } else {
+          code = `return new Promise(function(resolve, reject) {
+      ${insertCall}
+    });`
+        }
+
+        const target = pool.resolveTarget(presentationId)
+        const result = await pool.sendCommand('executeCode', { code }, target.ws)
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
+        const text = JSON.stringify(result ?? { success: true }, null, 2) + (warning ?? '')
         return { content: [{ type: 'text' as const, text }] }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)

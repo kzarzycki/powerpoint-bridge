@@ -41,6 +41,7 @@ If the bridge has never been installed, see [setup guide](references/setup.md).
 | `get_slide` | Get detailed shapes (positions, text, colors) | `slideIndex`, `presentationId?` |
 | `get_slide_image` | Capture slide screenshot as PNG | `slideIndex`, `width?` (default 720), `presentationId?` |
 | `copy_slides` | Copy slides between two open presentations (data stays server-side) | `sourceSlideIndex`, `sourcePresentationId`, `destinationPresentationId`, `formatting?`, `targetSlideId?` |
+| `insert_image` | Insert image from file path, URL, or base64 data (data stays server-side for file/url) | `source`, `sourceType` (`file`/`url`/`base64`), `slideIndex?`, `left?`, `top?`, `width?`, `height?`, `presentationId?` |
 | `execute_officejs` | Run arbitrary Office.js code in the live presentation | `code`, `presentationId?` |
 
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
@@ -63,7 +64,7 @@ For `execute_officejs` code patterns, see [code-patterns.md](references/code-pat
 
 Cannot do via Office.js — do not attempt:
 
-- Insert images directly (workaround: `presentation.insertSlidesFromBase64()`)
+- Insert images with precise shape-level control (use `insert_image` tool — positions via Common API, not shape API)
 - Create or edit charts
 - Add animations or transitions
 - Apply gradients, shadows, or effects (solid fills only)

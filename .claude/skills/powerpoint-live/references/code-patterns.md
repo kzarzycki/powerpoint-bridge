@@ -116,6 +116,34 @@ var result = slide.getImageAsBase64({ width: 1280, height: 720 });
 await context.sync();
 ```
 
+## Inserting Images
+
+Use the `insert_image` MCP tool to insert images onto slides. Three source modes:
+
+```
+insert_image(
+  source: "/path/to/image.png",
+  sourceType: "file",         // reads from disk, data stays server-side
+  slideIndex: 0,              // optional: navigate to this slide first (0-based)
+  left: 100,                  // optional: position in points
+  top: 100,
+  width: 400,
+  height: 300,
+)
+
+insert_image(
+  source: "https://example.com/photo.jpg",
+  sourceType: "url",          // fetches from URL, data stays server-side
+)
+
+insert_image(
+  source: "iVBORw0KGgo...",
+  sourceType: "base64",       // raw base64 data
+)
+```
+
+For `file` and `url` modes, image data transfers server-side and never enters Claude's context. If position/size are omitted, Office.js uses defaults.
+
 ## Copying Slides Between Presentations
 
 Use the `copy_slides` MCP tool to copy slides between two open presentations. The Base64 data transfers server-side (Add-in A → Bridge Server → Add-in B) and never enters Claude's context.
