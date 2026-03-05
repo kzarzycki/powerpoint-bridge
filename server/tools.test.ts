@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WebSocket } from 'ws'
 import { ConnectionPool } from './bridge.ts'
-import { registerTools } from './tools.ts'
+import { parseSlideRange, registerTools } from './tools.ts'
 
 vi.mock('node:fs', () => ({ readFileSync: vi.fn() }))
 
@@ -37,11 +37,20 @@ describe('MCP Tools', () => {
     pool = new ConnectionPool(100)
   })
 
-  it('lists all 7 tools', async () => {
+  it('lists all 8 tools', async () => {
     const { client } = await setupMcpClient(pool)
     const result = await client.listTools()
     const names = result.tools.map((t) => t.name).sort()
-    expect(names).toEqual(['copy_slides', 'execute_officejs', 'get_presentation', 'get_slide', 'get_slide_image', 'insert_image', 'list_presentations'])
+    expect(names).toEqual([
+      'copy_slides',
+      'execute_officejs',
+      'get_deck_overview',
+      'get_presentation',
+      'get_slide',
+      'get_slide_image',
+      'insert_image',
+      'list_presentations',
+    ])
   })
 
   describe('list_presentations', () => {
@@ -516,6 +525,239 @@ describe('MCP Tools', () => {
           source: 'AAAA',
           sourceType: 'base64',
         },
+      })
+      expect(result.isError).toBe(true)
+      const text = (result.content as Array<{ text: string }>)[0].text
+      expect(text).toContain('No presentations connected')
+    })
+  })
+
+  describe('parseSlideRange', () => {
+    it('returns null for undefined input', () => {
+      expect(parseSlideRange(undefined)).toBeNull()
+    })
+
+    it('returns null for empty string', () => {
+      expect(parseSlideRange('')).toBeNull()
+    })
+
+    it('parses single index', () => {
+      expect(parseSlideRange('5')).toEqual([5])
+    })
+
+    it('parses comma-separated indices', () => {
+      expect(parseSlideRange('2,4,7')).toEqual([2, 4, 7])
+    })
+
+    it('parses a range', () => {
+      expect(parseSlideRange('0-3')).toEqual([0, 1, 2, 3])
+    })
+
+    it('parses mixed ranges and indices', () => {
+      expect(parseSlideRange('0-2,5,8-10')).toEqual([0, 1, 2, 5, 8, 9, 10])
+    })
+
+    it('deduplicates overlapping ranges', () => {
+      expect(parseSlideRange('0-3,2-5')).toEqual([0, 1, 2, 3, 4, 5])
+    })
+
+    it('throws on invalid index', () => {
+      expect(() => parseSlideRange('abc')).toThrow('Invalid slide index')
+    })
+
+    it('throws on invalid range', () => {
+      expect(() => parseSlideRange('5-2')).toThrow('Invalid slide range')
+    })
+
+    it('throws on negative index', () => {
+      expect(() => parseSlideRange('-1')).toThrow('Invalid slide index')
+    })
+  })
+
+  describe('get_deck_overview', () => {
+    it('returns interleaved image and text blocks', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'get_deck_overview',
+        arguments: {},
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sentJson.action).toBe('executeCode')
+      expect(sentJson.params.code).toContain('getImageAsBase64')
+      expect(sentJson.params.code).toContain('width: 480')
+
+      pool.handleResponse(sentJson.id, 'response', {
+        slideCount: 3,
+        slides: [
+          {
+            index: 0,
+            id: 'slide-0',
+            shapeCount: 2,
+            shapes: [
+              { name: 'Title', type: 'TextBox', id: '1', text: 'Hello World' },
+              { name: 'Subtitle', type: 'TextBox', id: '2', text: 'Intro' },
+            ],
+            imageBase64: 'img0data',
+          },
+          {
+            index: 1,
+            id: 'slide-1',
+            shapeCount: 1,
+            shapes: [{ name: 'Picture', type: 'Image', id: '3' }],
+            imageBase64: 'img1data',
+          },
+          {
+            index: 2,
+            id: 'slide-2',
+            shapeCount: 1,
+            shapes: [{ name: 'Body', type: 'TextBox', id: '4', text: 'Content here' }],
+            imageBase64: 'img2data',
+          },
+        ],
+      })
+
+      const result = await toolPromise
+      const content = result.content as Array<{ type: string; text?: string; data?: string; mimeType?: string }>
+
+      // Header text
+      expect(content[0].type).toBe('text')
+      expect(content[0].text).toContain('3 total slides, showing 3')
+
+      // Slide 0: image then text
+      expect(content[1].type).toBe('image')
+      expect(content[1].data).toBe('img0data')
+      expect(content[1].mimeType).toBe('image/png')
+      expect(content[2].type).toBe('text')
+      expect(content[2].text).toContain('Slide 0')
+      expect(content[2].text).toContain('Hello World')
+      expect(content[2].text).toContain('Intro')
+
+      // Slide 1: image then text (no text content)
+      expect(content[3].type).toBe('image')
+      expect(content[4].type).toBe('text')
+      expect(content[4].text).toContain('Slide 1')
+      expect(content[4].text).toContain('(no text content)')
+
+      // Slide 2: image then text
+      expect(content[5].type).toBe('image')
+      expect(content[6].type).toBe('text')
+      expect(content[6].text).toContain('Content here')
+    })
+
+    it('skips images when includeImages is false', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'get_deck_overview',
+        arguments: { includeImages: false },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      // Should NOT contain getImageAsBase64 in the code
+      expect(sentJson.params.code).not.toContain('getImageAsBase64')
+
+      pool.handleResponse(sentJson.id, 'response', {
+        slideCount: 2,
+        slides: [
+          {
+            index: 0,
+            id: 'slide-0',
+            shapeCount: 1,
+            shapes: [{ name: 'Title', type: 'TextBox', id: '1', text: 'Slide text' }],
+          },
+          { index: 1, id: 'slide-1', shapeCount: 0, shapes: [] },
+        ],
+      })
+
+      const result = await toolPromise
+      const content = result.content as Array<{ type: string; text?: string }>
+
+      // Should have no image blocks at all
+      const imageBlocks = content.filter((c) => c.type === 'image')
+      expect(imageBlocks).toHaveLength(0)
+
+      // Should have header + 2 slide text blocks
+      expect(content).toHaveLength(3)
+      expect(content[1].text).toContain('Slide text')
+    })
+
+    it('passes custom imageWidth to Office.js code', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'get_deck_overview',
+        arguments: { imageWidth: 960 },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sentJson.params.code).toContain('width: 960')
+
+      pool.handleResponse(sentJson.id, 'response', { slideCount: 0, slides: [] })
+      await toolPromise
+    })
+
+    it('passes slideRange indices to Office.js code', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'get_deck_overview',
+        arguments: { slideRange: '0-2,5' },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sentJson.params.code).toContain('[0,1,2,5]')
+
+      pool.handleResponse(sentJson.id, 'response', { slideCount: 10, slides: [] })
+      await toolPromise
+    })
+
+    it('returns error when no connections', async () => {
+      const { client } = await setupMcpClient(pool)
+      const result = await client.callTool({
+        name: 'get_deck_overview',
+        arguments: {},
       })
       expect(result.isError).toBe(true)
       const text = (result.content as Array<{ text: string }>)[0].text

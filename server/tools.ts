@@ -34,6 +34,39 @@ export function clearSessionWarnings(sessionId: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a slide range string like "0-3,5,8-10" into a sorted, deduplicated
+ * array of zero-based indices: [0,1,2,3,5,8,9,10].
+ * Returns null for undefined/empty input (meaning "all slides").
+ */
+export function parseSlideRange(range: string | undefined): number[] | null {
+  if (!range) return null
+  const indices = new Set<number>()
+  for (const part of range.split(',')) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    const dashIdx = trimmed.indexOf('-', 1)
+    if (dashIdx === -1) {
+      const n = Number(trimmed)
+      if (!Number.isInteger(n) || n < 0) throw new Error(`Invalid slide index: "${trimmed}"`)
+      indices.add(n)
+    } else {
+      const start = Number(trimmed.slice(0, dashIdx))
+      const end = Number(trimmed.slice(dashIdx + 1))
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) {
+        throw new Error(`Invalid slide range: "${trimmed}"`)
+      }
+      for (let i = start; i <= end; i++) indices.add(i)
+    }
+  }
+  if (indices.size === 0) return null
+  return [...indices].sort((a, b) => a - b)
+}
+
+// ---------------------------------------------------------------------------
 // Tool registration
 // ---------------------------------------------------------------------------
 
@@ -191,7 +224,9 @@ export function registerTools(
         .min(1)
         .max(4096)
         .optional()
-        .describe('Image width in pixels. Default: 720. Height auto-calculated to preserve aspect ratio unless also specified.'),
+        .describe(
+          'Image width in pixels. Default: 720. Height auto-calculated to preserve aspect ratio unless also specified.',
+        ),
       height: z
         .number()
         .int()
@@ -232,7 +267,7 @@ export function registerTools(
           slideId: string
         }
         const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
-        const description = `Slide ${result.slideIndex} (ID: ${result.slideId})` + (warning ?? '')
+        const description = `Slide ${result.slideIndex} (ID: ${result.slideId})${warning ?? ''}`
 
         return {
           content: [
@@ -269,7 +304,9 @@ export function registerTools(
       targetSlideId: z
         .string()
         .optional()
-        .describe('Insert after this slide ID in destination (format: "nnn#" or "#mmmmmmmmm" or "nnn#mmmmmmmmm"). If omitted, inserts at the beginning.'),
+        .describe(
+          'Insert after this slide ID in destination (format: "nnn#" or "#mmmmmmmmm" or "nnn#mmmmmmmmm"). If omitted, inserts at the beginning.',
+        ),
       formatting: z
         .enum(['KeepSourceFormatting', 'UseDestinationTheme'])
         .optional()
@@ -346,13 +383,17 @@ export function registerTools(
       source: z.string().describe('File path, URL, or base64 image data depending on sourceType'),
       sourceType: z
         .enum(['file', 'url', 'base64'])
-        .describe('How to interpret source: "file" reads from disk, "url" fetches from network, "base64" uses data directly'),
+        .describe(
+          'How to interpret source: "file" reads from disk, "url" fetches from network, "base64" uses data directly',
+        ),
       slideIndex: z
         .number()
         .int()
         .min(0)
         .optional()
-        .describe('Zero-based slide index to navigate to before inserting. If omitted, inserts on the currently active slide.'),
+        .describe(
+          'Zero-based slide index to navigate to before inserting. If omitted, inserts on the currently active slide.',
+        ),
       left: z.number().optional().describe('Horizontal position in points (1 point = 1/72 inch)'),
       top: z.number().optional().describe('Vertical position in points'),
       width: z.number().optional().describe('Image width in points'),
@@ -419,6 +460,126 @@ export function registerTools(
         const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
         const text = JSON.stringify(result ?? { success: true }, null, 2) + (warning ?? '')
         return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: get_deck_overview ---
+  server.tool(
+    'get_deck_overview',
+    'Returns a visual overview of all (or selected) slides in one call — thumbnails interleaved with text metadata. Much more efficient than calling get_slide + get_slide_image per slide. Use this to review or audit an entire presentation quickly.',
+    {
+      slideRange: z
+        .string()
+        .optional()
+        .describe('Slide indices to include, e.g. "0-5", "2,4,7", "0-2,5,8-10". Omit for all slides.'),
+      imageWidth: z
+        .number()
+        .int()
+        .min(120)
+        .max(1920)
+        .optional()
+        .describe('Thumbnail width in pixels. Default: 480. Height auto-calculated to preserve aspect ratio.'),
+      includeImages: z
+        .boolean()
+        .optional()
+        .describe('Include slide thumbnails. Default: true. Set false for text-only overview (faster).'),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideRange, imageWidth, includeImages, presentationId }) => {
+      try {
+        const indices = parseSlideRange(slideRange)
+        const width = imageWidth ?? 480
+        const withImages = includeImages !== false
+
+        // Build the indices array literal for Office.js, or null for "all"
+        const indicesJs = indices ? JSON.stringify(indices) : 'null'
+
+        const code = `
+          var slides = context.presentation.slides;
+          slides.load("items");
+          await context.sync();
+          var requestedIndices = ${indicesJs};
+          var indicesToProcess = requestedIndices || [];
+          if (!requestedIndices) {
+            for (var i = 0; i < slides.items.length; i++) indicesToProcess.push(i);
+          }
+          // Validate indices
+          for (var i = 0; i < indicesToProcess.length; i++) {
+            if (indicesToProcess[i] >= slides.items.length) {
+              throw new Error("Slide index " + indicesToProcess[i] + " out of range (presentation has " + slides.items.length + " slides)");
+            }
+          }
+          // Load shapes for all requested slides
+          for (var i = 0; i < indicesToProcess.length; i++) {
+            slides.items[indicesToProcess[i]].shapes.load("items");
+          }
+          await context.sync();
+          var output = [];
+          for (var i = 0; i < indicesToProcess.length; i++) {
+            var idx = indicesToProcess[i];
+            var slide = slides.items[idx];
+            var shapes = [];
+            for (var j = 0; j < slide.shapes.items.length; j++) {
+              var s = slide.shapes.items[j];
+              var info = { name: s.name, type: s.type, id: s.id };
+              try {
+                s.textFrame.load("textRange");
+                await context.sync();
+                info.text = s.textFrame.textRange.text;
+              } catch (e) {}
+              shapes.push(info);
+            }
+            var slideData = { index: idx, id: slide.id, shapeCount: shapes.length, shapes: shapes };
+            ${
+              withImages
+                ? `var img = slide.getImageAsBase64({ width: ${width} });
+            await context.sync();
+            slideData.imageBase64 = img.value;`
+                : ''
+            }
+            output.push(slideData);
+          }
+          return { slideCount: slides.items.length, slides: output };
+        `
+        const target = pool.resolveTarget(presentationId)
+        const result = (await pool.sendCommand('executeCode', { code }, target.ws, 120_000)) as {
+          slideCount: number
+          slides: Array<{
+            index: number
+            id: string
+            shapeCount: number
+            shapes: Array<{ name: string; type: string; id: string; text?: string }>
+            imageBase64?: string
+          }>
+        }
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
+
+        // Build interleaved content blocks
+        const content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = []
+        const showing = result.slides.length
+        const header = `Deck overview: ${result.slideCount} total slides, showing ${showing}${warning ?? ''}`
+        content.push({ type: 'text' as const, text: header })
+
+        for (const slide of result.slides) {
+          if (slide.imageBase64) {
+            content.push({ type: 'image' as const, data: slide.imageBase64, mimeType: 'image/png' })
+          }
+          const textParts = slide.shapes.filter((s) => s.text).map((s) => s.text!)
+          const shapeText = textParts.length > 0 ? `\n${textParts.join('\n')}` : '\n(no text content)'
+          content.push({
+            type: 'text' as const,
+            text: `--- Slide ${slide.index} | ${slide.shapeCount} shapes ---${shapeText}`,
+          })
+        }
+
+        return { content }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }

@@ -100,6 +100,18 @@ var table = shapes.addTable(4, 3);
 await context.sync();
 ```
 
+## Deck Overview
+
+Use the `get_deck_overview` MCP tool to review an entire presentation efficiently. Returns thumbnails interleaved with text metadata in one call — far cheaper than sequential `get_slide` + `get_slide_image` per slide.
+
+```
+get_deck_overview()                              // all slides, thumbnails at 480px
+get_deck_overview(slideRange: "0-5")             // first 6 slides only
+get_deck_overview(slideRange: "2,4,7")           // specific slides
+get_deck_overview(includeImages: false)           // text-only (fastest)
+get_deck_overview(imageWidth: 720)                // larger thumbnails
+```
+
 ## Screenshots
 
 Always use the `get_slide_image` MCP tool for visual screenshots. Do NOT call `getImageAsBase64` through `execute_officejs` — the raw Base64 text overflows the token limit.

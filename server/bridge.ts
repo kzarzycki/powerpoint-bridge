@@ -117,13 +117,19 @@ export class ConnectionPool {
   }
 
   /** Send a command to a specific WebSocket and wait for a response */
-  sendCommand(action: string, params: Record<string, unknown>, targetWs: WebSocket): Promise<unknown> {
+  sendCommand(
+    action: string,
+    params: Record<string, unknown>,
+    targetWs: WebSocket,
+    timeoutMs?: number,
+  ): Promise<unknown> {
     const id = randomUUID()
+    const timeout = timeoutMs ?? this.commandTimeout
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRequests.delete(id)
-        reject(new Error(`Command timed out after ${this.commandTimeout}ms`))
-      }, this.commandTimeout)
+        reject(new Error(`Command timed out after ${timeout}ms`))
+      }, timeout)
 
       this.pendingRequests.set(id, { resolve, reject, timer, ws: targetWs })
       targetWs.send(JSON.stringify({ type: 'command', id, action, params }))
