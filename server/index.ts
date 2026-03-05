@@ -291,6 +291,12 @@ server.listen(PORT, () => {
 function handleMcpRequest(req: IncomingMessage, res: ServerResponse): void {
   const url = (req.url ?? '/').split('?')[0]
 
+  if (url === '/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ status: 'ok', connections: pool.size, sessions: mcpTransports.size }))
+    return
+  }
+
   if (url === '/mcp') {
     if (req.method === 'POST') {
       handleMcpPost(req, res)

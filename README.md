@@ -45,16 +45,16 @@ brew install mkcert node
 ### Let Claude do it
 
 ```bash
-git clone https://github.com/kzarzycki/powerpoint-bridge.git ~/powerpoint-bridge
+git clone https://github.com/kzarzycki/powerpoint-bridge.git
 ```
 
-Then tell Claude: "install powerpoint bridge from ~/powerpoint-bridge" — it will handle `npm install`, certs, sideloading, and per-project config.
+Then tell Claude: "install powerpoint bridge from `<path>`" — it will handle `npm install`, certs, sideloading, and per-project config.
 
 ### Manual install
 
 ```bash
-git clone https://github.com/kzarzycki/powerpoint-bridge.git ~/powerpoint-bridge
-cd ~/powerpoint-bridge
+git clone https://github.com/kzarzycki/powerpoint-bridge.git
+cd powerpoint-bridge
 npm install
 mkcert -install    # One-time: adds mkcert CA to macOS Keychain (requires password)
 npm run setup      # Generates certs, sideloads add-in, installs Claude Code skill
@@ -143,7 +143,7 @@ Run `npm run setup-certs` to generate certificates. If this is your first time, 
 2. Check that the file exists: `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/manifest.xml`
 
 **Add-in shows "Disconnected"**
-Make sure the bridge server is running (`npm start`). The add-in auto-reconnects with exponential backoff.
+Make sure the bridge server is running (`npm start`). You can verify with `curl http://localhost:3001/health`. The add-in auto-reconnects with exponential backoff.
 
 **"Certificate not trusted" in browser**
 Run `mkcert -install` to add the mkcert CA to your system Keychain. You may need to enter your macOS password.

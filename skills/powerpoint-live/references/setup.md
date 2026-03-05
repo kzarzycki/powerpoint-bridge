@@ -26,16 +26,12 @@ If `.mcp.json` already exists with other servers, merge — do not overwrite.
 ## 3. Check server is running
 
 ```bash
-curl -s http://localhost:3001/mcp -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+curl -sf http://localhost:3001/health
 ```
 
-- If responds with JSON containing `serverInfo` — server is running, continue.
-- If fails — tell user: "Start the bridge server: `cd ~/powerpoint-bridge && npm start`"
+- If responds with JSON containing `"status":"ok"` — server is running, continue to step 4.
+- If fails — tell user: "The bridge server isn't running. Start it with `npm start` from the powerpoint-bridge repo directory." Optionally suggest setting up a launchd plist for persistent auto-start if the user wants the server to run automatically.
 
 ## 4. Verify connectivity
 
 Call `list_presentations`. If it returns results or "No presentations connected", setup is complete. Report status to user.
-
-## Not installed at all?
-
-If the bridge repo doesn't exist at `~/powerpoint-bridge`, direct the user to the [README install instructions](../../../README.md#install).
