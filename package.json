@@ -36,7 +36,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check": "biome check . && tsc --noEmit && vitest run",
-    "sideload": "mkdir -p ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef && cp addin/manifest.xml ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/"
+    "sideload": "mkdir -p ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef && cp addin/manifest.xml ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/",
+    "prepare": "husky"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
@@ -48,7 +49,17 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.0.18",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.2",
     "typescript": "^5.9.0",
     "vitest": "^4.0.18"
+  },
+  "lint-staged": {
+    "server/**/*.ts": [
+      "biome check --write --no-errors-on-unmatched"
+    ],
+    "addin/**/*.js": [
+      "biome check --write --no-errors-on-unmatched"
+    ]
   }
 }
