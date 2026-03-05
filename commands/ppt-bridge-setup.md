@@ -42,11 +42,10 @@ ls ~/Library/Containers/com.microsoft.PowerPoint/Data/Documents/wef/ 2>/dev/null
 Test if the bridge server is running:
 
 ```bash
-curl -sf http://localhost:3001/mcp -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+curl -sf http://localhost:3001/health
 ```
 
-- If responds with JSON containing `serverInfo`: report "Server: running" and continue.
+- If responds with JSON containing `"status":"ok"`: report "Server: running (N presentations connected)" using the `connections` value from the response, and continue.
 - If fails: tell the user to start it:
   ```
   cd <plugin-root> && npm start
