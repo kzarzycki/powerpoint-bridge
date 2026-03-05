@@ -23,6 +23,7 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 | `get_presentation` | Get slide structure (indices, shape names/types) | `presentationId?` |
 | `get_slide` | Get detailed shapes (positions, text, colors) | `slideIndex`, `presentationId?` |
 | `get_slide_image` | Capture slide screenshot as PNG | `slideIndex`, `width?` (default 720), `presentationId?` |
+| `get_deck_overview` | Visual overview of all/selected slides in one call (thumbnails + text) | `slideRange?`, `imageWidth?` (default 480), `includeImages?`, `presentationId?` |
 | `copy_slides` | Copy slides between two open presentations (data stays server-side) | `sourceSlideIndex`, `sourcePresentationId`, `destinationPresentationId`, `formatting?`, `targetSlideId?` |
 | `insert_image` | Insert image from file path, URL, or base64 data (data stays server-side for file/url) | `source`, `sourceType` (`file`/`url`/`base64`), `slideIndex?`, `left?`, `top?`, `width?`, `height?`, `presentationId?` |
 | `execute_officejs` | Run arbitrary Office.js code in the live presentation | `code`, `presentationId?` |
@@ -34,8 +35,8 @@ All positioning values from `get_slide` are in **points** (1 pt = 1/72 inch). St
 ## Workflow
 
 1. **Discover**: `list_presentations` — find connected presentations
-2. **Understand**: `get_presentation` then `get_slide` — learn structure
-3. **See**: `get_slide_image` — visually inspect current state
+2. **Understand**: `get_deck_overview` — visual overview of all slides in one call; or `get_presentation` then `get_slide` for targeted inspection
+3. **See**: `get_slide_image` — visually inspect a specific slide
 4. **Modify**: `execute_officejs` — make changes with Office.js code
 5. **Verify**: `get_slide_image` — confirm visual result
 
