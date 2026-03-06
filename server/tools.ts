@@ -644,7 +644,9 @@ export function registerTools(
           }
         }
 
-        // Export fresh copy via Common API getFileAsync (Presentation.exportAsBase64 doesn't exist)
+        // Export fresh copy via Common API getFileAsync.
+        // NOTE: Presentation.exportAsBase64() doesn't exist. SlideCollection.exportAsBase64Presentation()
+        // exists (API 1.10) but crashes PowerPoint on macOS 16.100 (SIGABRT in OLEAutomation).
         const exportCode = `
           return new Promise(function(resolve, reject) {
             Office.context.document.getFileAsync(Office.FileType.Compressed, { sliceSize: 4194304 }, function(result) {
