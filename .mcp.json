@@ -3,7 +3,7 @@
     "powerpoint-bridge": {
       "command": "node",
       "args": [
-        "${CLAUDE_PLUGIN_ROOT}/server/index.ts",
+        "${CLAUDE_PLUGIN_ROOT}/dist/index.cjs",
         "--stdio",
         "--bridge"
       ]
