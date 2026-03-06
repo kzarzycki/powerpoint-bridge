@@ -1,0 +1,17 @@
+{
+  "name": "powerpoint-bridge",
+  "owner": {
+    "name": "Krzysztof Zarzycki"
+  },
+  "plugins": [
+    {
+      "name": "powerpoint-bridge",
+      "source": {
+        "source": "github",
+        "repo": "kzarzycki/powerpoint-bridge",
+        "ref": "feat/plugin-support"
+      },
+      "description": "Live-edit open PowerPoint presentations via Office.js MCP bridge"
+    }
+  ]
+}
