@@ -4,9 +4,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WebSocket } from 'ws'
 import { ConnectionPool } from './bridge.ts'
-import { parseSlideRange, registerTools } from './tools.ts'
+import { localCopyCache, parseSlideRange, registerTools } from './tools.ts'
 
-vi.mock('node:fs', () => ({ readFileSync: vi.fn() }))
+vi.mock('node:fs', () => ({ existsSync: vi.fn(() => true), readFileSync: vi.fn(), writeFileSync: vi.fn() }))
 
 function mockWs(): WebSocket {
   return { send: vi.fn(), readyState: 1 } as unknown as WebSocket
@@ -37,7 +37,7 @@ describe('MCP Tools', () => {
     pool = new ConnectionPool(100)
   })
 
-  it('lists all 8 tools', async () => {
+  it('lists all 9 tools', async () => {
     const { client } = await setupMcpClient(pool)
     const result = await client.listTools()
     const names = result.tools.map((t) => t.name).sort()
@@ -45,6 +45,7 @@ describe('MCP Tools', () => {
       'copy_slides',
       'execute_officejs',
       'get_deck_overview',
+      'get_local_copy',
       'get_presentation',
       'get_slide',
       'get_slide_image',
@@ -759,6 +760,165 @@ describe('MCP Tools', () => {
         name: 'get_deck_overview',
         arguments: {},
       })
+      expect(result.isError).toBe(true)
+      const text = (result.content as Array<{ text: string }>)[0].text
+      expect(text).toContain('No presentations connected')
+    })
+  })
+
+  describe('get_local_copy', () => {
+    beforeEach(() => {
+      localCopyCache.clear()
+    })
+
+    it('returns local file path directly for local files', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: '/path/to/test.pptx',
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const result = await client.callTool({ name: 'get_local_copy', arguments: {} })
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.localPath).toBe('/path/to/test.pptx')
+      expect(parsed.source).toBe('local')
+      // No WebSocket commands should have been sent
+      expect(ws.send).not.toHaveBeenCalled()
+    })
+
+    it('returns error when local file does not exist', async () => {
+      const { existsSync } = await import('node:fs')
+      vi.mocked(existsSync).mockReturnValueOnce(false)
+
+      const ws = mockWs()
+      pool.add('missing.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'missing.pptx',
+        filePath: '/path/to/missing.pptx',
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const result = await client.callTool({ name: 'get_local_copy', arguments: {} })
+      expect(result.isError).toBe(true)
+      const text = (result.content as Array<{ text: string }>)[0].text
+      expect(text).toContain('Local file not found')
+    })
+
+    it('exports cloud file and writes to temp', async () => {
+      const ws = mockWs()
+      pool.add('cloud-deck', {
+        ws,
+        ready: true,
+        presentationId: 'cloud-deck',
+        filePath: 'https://sharepoint.com/sites/team/Shared%20Documents/deck.pptx',
+      })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({ name: 'get_local_copy', arguments: {} })
+
+      // First command: get revision number
+      await new Promise((r) => setTimeout(r, 10))
+      const revJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(revJson.params.code).toContain('revisionNumber')
+      pool.handleResponse(revJson.id, 'response', 42)
+
+      // Second command: export base64
+      await new Promise((r) => setTimeout(r, 10))
+      const exportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[1][0])
+      expect(exportJson.params.code).toContain('exportAsBase64')
+      pool.handleResponse(exportJson.id, 'response', 'UEsDBBQAAAA=')
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.source).toBe('exported')
+      expect(parsed.revision).toBe(42)
+      expect(parsed.localPath).toContain('pptbridge-')
+      expect(parsed.localPath).toContain('deck.pptx')
+
+      // Verify writeFileSync was called
+      const { writeFileSync } = await import('node:fs')
+      expect(writeFileSync).toHaveBeenCalled()
+    })
+
+    it('returns cached path when revision unchanged', async () => {
+      const ws = mockWs()
+      pool.add('cloud-deck', {
+        ws,
+        ready: true,
+        presentationId: 'cloud-deck',
+        filePath: 'https://sharepoint.com/sites/team/deck.pptx',
+      })
+
+      // Pre-populate cache
+      localCopyCache.set('cloud-deck', { localPath: '/tmp/pptbridge-cached-deck.pptx', revision: 7 })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({ name: 'get_local_copy', arguments: {} })
+
+      // Revision check returns same revision
+      await new Promise((r) => setTimeout(r, 10))
+      const revJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      pool.handleResponse(revJson.id, 'response', 7)
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.source).toBe('cached')
+      expect(parsed.localPath).toBe('/tmp/pptbridge-cached-deck.pptx')
+      expect(parsed.revision).toBe(7)
+
+      // Should only have sent one command (revision check), not export
+      expect(ws.send).toHaveBeenCalledTimes(1)
+    })
+
+    it('re-exports when revision has changed', async () => {
+      const ws = mockWs()
+      pool.add('cloud-deck', {
+        ws,
+        ready: true,
+        presentationId: 'cloud-deck',
+        filePath: 'https://sharepoint.com/sites/team/deck.pptx',
+      })
+
+      // Pre-populate cache with old revision
+      localCopyCache.set('cloud-deck', { localPath: '/tmp/pptbridge-old.pptx', revision: 5 })
+
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({ name: 'get_local_copy', arguments: {} })
+
+      // Revision check returns NEW revision
+      await new Promise((r) => setTimeout(r, 10))
+      const revJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      pool.handleResponse(revJson.id, 'response', 6)
+
+      // Should trigger export
+      await new Promise((r) => setTimeout(r, 10))
+      const exportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[1][0])
+      expect(exportJson.params.code).toContain('exportAsBase64')
+      pool.handleResponse(exportJson.id, 'response', 'UEsDBBQAAAA=')
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.source).toBe('exported')
+      expect(parsed.revision).toBe(6)
+
+      // Two commands sent: revision check + export
+      expect(ws.send).toHaveBeenCalledTimes(2)
+    })
+
+    it('returns error when no connections', async () => {
+      const { client } = await setupMcpClient(pool)
+      const result = await client.callTool({ name: 'get_local_copy', arguments: {} })
       expect(result.isError).toBe(true)
       const text = (result.content as Array<{ text: string }>)[0].text
       expect(text).toContain('No presentations connected')

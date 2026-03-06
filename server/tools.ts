@@ -1,7 +1,15 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { ConnectionPool } from './bridge.ts'
+
+// ---------------------------------------------------------------------------
+// Local copy cache: presentationId → { localPath, revision }
+// ---------------------------------------------------------------------------
+
+export const localCopyCache = new Map<string, { localPath: string; revision: number }>()
 
 // ---------------------------------------------------------------------------
 // Concurrent access warning helper
@@ -580,6 +588,67 @@ export function registerTools(
         }
 
         return { content }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: get_local_copy ---
+  server.tool(
+    'get_local_copy',
+    'Returns a local file path for the presentation. For local files, returns the existing path. For SharePoint/cloud files, exports server-side and saves to a temp .pptx. Caches by revision number — re-exports only when the presentation has been saved since last export.',
+    {
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+        const filePath = target.filePath
+
+        // Local file — already on disk
+        if (filePath && !filePath.startsWith('http')) {
+          if (!existsSync(filePath)) {
+            return { content: [{ type: 'text' as const, text: `Error: Local file not found: ${filePath}` }], isError: true }
+          }
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ localPath: filePath, source: 'local' }) }] }
+        }
+
+        // Cloud file — check revision for cache validity
+        const revCode = `
+          var p = context.presentation.properties;
+          p.load("revisionNumber");
+          await context.sync();
+          return p.revisionNumber;
+        `
+        const currentRevision = await pool.sendCommand('executeCode', { code: revCode }, target.ws) as number
+
+        const cached = localCopyCache.get(target.presentationId)
+        if (cached && cached.revision === currentRevision && existsSync(cached.localPath)) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ localPath: cached.localPath, source: 'cached', revision: currentRevision }) }] }
+        }
+
+        // Export fresh copy
+        const exportCode = `
+          var r = context.presentation.exportAsBase64();
+          await context.sync();
+          return r.value;
+        `
+        const base64 = await pool.sendCommand('executeCode', { code: exportCode }, target.ws, 120_000) as string
+
+        const filename = filePath
+          ? decodeURIComponent(filePath.split('/').pop() || 'presentation.pptx')
+          : 'presentation.pptx'
+        const dest = join(tmpdir(), `pptbridge-${Date.now()}-${filename}`)
+        writeFileSync(dest, Buffer.from(base64, 'base64'))
+
+        localCopyCache.set(target.presentationId, { localPath: dest, revision: currentRevision })
+
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ localPath: dest, source: 'exported', revision: currentRevision }) }] }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
