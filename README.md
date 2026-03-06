@@ -7,6 +7,79 @@ An MCP server that lets AI assistants manipulate **live, open** PowerPoint prese
 
 Unlike file-based tools (python-pptx), PowerPoint Bridge works with presentations that are already open — changes appear instantly, and you keep full access to PowerPoint's UI, animations, and formatting.
 
+## Installation
+
+Run as an MCP server via npx (no install needed):
+
+```bash
+npx powerpoint-bridge --stdio --bridge
+```
+
+Then configure your MCP client:
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "powerpoint-bridge": {
+      "command": "npx",
+      "args": ["-y", "powerpoint-bridge", "--stdio", "--bridge"]
+    }
+  }
+}
+```
+
+**Claude Code** (`.mcp.json` in project root):
+```json
+{
+  "mcpServers": {
+    "powerpoint-bridge": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "powerpoint-bridge", "--stdio", "--bridge"]
+    }
+  }
+}
+```
+
+**Cursor** (`.cursor/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "powerpoint-bridge": {
+      "command": "npx",
+      "args": ["-y", "powerpoint-bridge", "--stdio", "--bridge"]
+    }
+  }
+}
+```
+
+**VS Code / GitHub Copilot** (`.vscode/mcp.json`):
+```json
+{
+  "servers": {
+    "powerpoint-bridge": {
+      "command": "npx",
+      "args": ["-y", "powerpoint-bridge", "--stdio", "--bridge"]
+    }
+  }
+}
+```
+
+**Windsurf** (`~/.codeium/windsurf/mcp_config.json`):
+```json
+{
+  "mcpServers": {
+    "powerpoint-bridge": {
+      "command": "npx",
+      "args": ["-y", "powerpoint-bridge", "--stdio", "--bridge"]
+    }
+  }
+}
+```
+
+> **Note:** The PowerPoint add-in must still be sideloaded separately. See [Setup](#setup) for details.
+
 ## Motivation
 
 This project was inspired by the [Claude in PowerPoint](https://support.anthropic.com/en/articles/11360939-using-claude-in-powerpoint) add-in. The first time I tried it, I was amazed — it edits live, open decks via Office.js, and the results are far better than file-based pptx tools. But it only works inside the add-in, which means no access to CLAUDE.md, skills, or any other Claude Code features. PowerPoint Bridge brings those same Office.js capabilities to Claude Code (and any MCP client) so you get live editing with the full power of your coding environment.
