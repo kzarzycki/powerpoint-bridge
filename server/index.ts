@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createServer as createHttpServer } from 'node:http'
-import { createServer } from 'node:https'
+import { createServer as createHttpsServer } from 'node:https'
 import { extname, join, resolve } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -17,24 +17,30 @@ import { clearSessionWarnings, registerTools } from './tools.ts'
 // Constants
 // ---------------------------------------------------------------------------
 
-const PORT = 8443
-const MCP_PORT = 3001
-const CERT_PATH = './certs/localhost.pem'
-const KEY_PATH = './certs/localhost-key.pem'
-const STATIC_DIR = resolve('./addin')
+const BRIDGE_DEFAULT_HTTP_PORT = 8080
+const BRIDGE_DEFAULT_HTTPS_PORT = 8443
+const MCP_PORT = Number(process.env.MCP_PORT) || 3001
+const BRIDGE_CERT_PATH = './certs/localhost.pem'
+const BRIDGE_KEY_PATH = './certs/localhost-key.pem'
+const ADDIN_STATIC_DIR = resolve('./addin')
 
 // ---------------------------------------------------------------------------
-// Startup cert check
+// TLS mode (config-driven via BRIDGE_TLS env var)
 // ---------------------------------------------------------------------------
 
-if (!existsSync(CERT_PATH) || !existsSync(KEY_PATH)) {
+const bridgeTls = process.env.BRIDGE_TLS === '1'
+
+if (bridgeTls && (!existsSync(BRIDGE_CERT_PATH) || !existsSync(BRIDGE_KEY_PATH))) {
   console.error(
-    'Error: TLS certificate files not found.\n' +
-      `  Expected: ${CERT_PATH} and ${KEY_PATH}\n` +
+    'Error: BRIDGE_TLS=1 but TLS certificate files not found.\n' +
+      `  Expected: ${BRIDGE_CERT_PATH} and ${BRIDGE_KEY_PATH}\n` +
       '  Run: npm run setup-certs',
   )
   process.exit(1)
 }
+
+const BRIDGE_PORT =
+  Number(process.env.BRIDGE_PORT) || (bridgeTls ? BRIDGE_DEFAULT_HTTPS_PORT : BRIDGE_DEFAULT_HTTP_PORT)
 
 // ---------------------------------------------------------------------------
 // Shared state
@@ -198,9 +204,9 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
   }
 
   const urlPath = rawUrl === '/' ? '/index.html' : rawUrl
-  const filePath = resolve(join(STATIC_DIR, urlPath))
+  const filePath = resolve(join(ADDIN_STATIC_DIR, urlPath))
 
-  if (!filePath.startsWith(STATIC_DIR)) {
+  if (!filePath.startsWith(ADDIN_STATIC_DIR)) {
     res.writeHead(403, { 'Content-Type': 'text/plain' })
     res.end('403 Forbidden')
     return
@@ -218,19 +224,18 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
 }
 
 // ---------------------------------------------------------------------------
-// HTTPS server
+// Bridge server (HTTP or HTTPS based on BRIDGE_TLS)
 // ---------------------------------------------------------------------------
 
-const cert = readFileSync(CERT_PATH)
-const key = readFileSync(KEY_PATH)
-
-const server = createServer({ cert, key }, serveStatic)
+const bridgeServer = bridgeTls
+  ? createHttpsServer({ cert: readFileSync(BRIDGE_CERT_PATH), key: readFileSync(BRIDGE_KEY_PATH) }, serveStatic)
+  : createHttpServer(serveStatic)
 
 // ---------------------------------------------------------------------------
 // WebSocket server
 // ---------------------------------------------------------------------------
 
-const wss = new WebSocketServer({ server })
+const wss = new WebSocketServer({ server: bridgeServer })
 
 wss.on('connection', (ws: WebSocket) => {
   console.error('WebSocket client connected')
@@ -275,13 +280,16 @@ wss.on('connection', (ws: WebSocket) => {
 })
 
 // ---------------------------------------------------------------------------
-// Start HTTPS server
+// Start bridge server
 // ---------------------------------------------------------------------------
 
-server.listen(PORT, () => {
+const bridgeScheme = bridgeTls ? 'https' : 'http'
+const bridgeWsScheme = bridgeTls ? 'wss' : 'ws'
+
+bridgeServer.listen(BRIDGE_PORT, () => {
   console.error('Bridge server running')
-  console.error(`  HTTPS: https://localhost:${PORT}`)
-  console.error(`  WSS:   wss://localhost:${PORT}`)
+  console.error(`  ${bridgeScheme.toUpperCase()}: ${bridgeScheme}://localhost:${BRIDGE_PORT}`)
+  console.error(`  ${bridgeWsScheme.toUpperCase()}:  ${bridgeWsScheme}://localhost:${BRIDGE_PORT}`)
 })
 
 // ---------------------------------------------------------------------------
