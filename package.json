@@ -53,6 +53,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check": "biome check . && tsc --noEmit && vitest run",
+    "build:mcpb": "bash scripts/build-mcpb.sh",
     "sideload": "mkdir -p ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef && cp addin/manifest.xml ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/manifest.xml",
     "sideload:https": "mkdir -p ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef && cp addin/manifest-https.xml ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/manifest.xml",
     "prepare": "husky"

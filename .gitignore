@@ -11,4 +11,5 @@ dist/index.js
 dist/*.map
 *.tgz
 *.tsbuildinfo
+*.mcpb
 logs/
