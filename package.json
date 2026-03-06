@@ -4,6 +4,9 @@
   "description": "MCP server that lets AI assistants manipulate live PowerPoint presentations via Office.js",
   "type": "module",
   "private": true,
+  "bin": {
+    "powerpoint-bridge": "./server/index.ts"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
