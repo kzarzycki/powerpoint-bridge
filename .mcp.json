@@ -1,8 +1,14 @@
 {
   "mcpServers": {
     "powerpoint-bridge": {
-      "type": "http",
-      "url": "http://localhost:3001/mcp"
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "server/index.ts",
+        "--stdio",
+        "--bridge"
+      ],
+      "env": {}
     }
   }
 }
