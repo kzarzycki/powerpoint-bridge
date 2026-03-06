@@ -1,14 +1,12 @@
 {
   "mcpServers": {
     "powerpoint-bridge": {
-      "type": "stdio",
       "command": "node",
       "args": [
-        "server/index.ts",
+        "${CLAUDE_PLUGIN_ROOT}/server/index.ts",
         "--stdio",
         "--bridge"
-      ],
-      "env": {}
+      ]
     }
   }
 }

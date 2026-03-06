@@ -12,10 +12,14 @@ mkdir -p "$WEF_DIR"
 cp "$REPO_DIR/addin/manifest.xml" "$WEF_DIR/"
 echo "[add-in] Manifest sideloaded to PowerPoint (HTTP mode)"
 
-# 2. Install skill globally
-mkdir -p ~/.claude/skills
-ln -sfn "$REPO_DIR/skills/powerpoint-live" ~/.claude/skills/powerpoint-live
-echo "[skill] Installed globally at ~/.claude/skills/powerpoint-live"
+# 2. Install skill globally (skip if running as a Claude Code plugin)
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  mkdir -p ~/.claude/skills
+  ln -sfn "$REPO_DIR/skills/powerpoint-live" ~/.claude/skills/powerpoint-live
+  echo "[skill] Installed globally at ~/.claude/skills/powerpoint-live"
+else
+  echo "[skill] Skipped (plugin auto-discovery handles this)"
+fi
 
 echo ""
 echo "=== Setup complete ==="
