@@ -10410,7 +10410,9 @@ var import_node_crypto2 = require("node:crypto");
 var import_node_fs2 = require("node:fs");
 var import_node_http = require("node:http");
 var import_node_https = require("node:https");
+var import_node_os2 = require("node:os");
 var import_node_path2 = require("node:path");
+var import_node_url = require("node:url");
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -35452,12 +35454,15 @@ ${textParts.join("\n")}` : "\n(no text content)";
 }
 
 // server/index.ts
+var import_meta = {};
 var BRIDGE_DEFAULT_HTTP_PORT = 8080;
 var BRIDGE_DEFAULT_HTTPS_PORT = 8443;
 var MCP_HTTP_PORT = Number(process.env.MCP_PORT) || 3001;
-var BRIDGE_CERT_PATH = "./certs/localhost.pem";
-var BRIDGE_KEY_PATH = "./certs/localhost-key.pem";
-var ADDIN_STATIC_DIR = (0, import_node_path2.resolve)("./addin");
+var SCRIPT_DIR = typeof __dirname !== "undefined" ? __dirname : (0, import_node_path2.dirname)((0, import_node_url.fileURLToPath)(import_meta.url));
+var PROJECT_ROOT = (0, import_node_path2.resolve)(SCRIPT_DIR, "..");
+var BRIDGE_CERT_PATH = (0, import_node_path2.resolve)(PROJECT_ROOT, "certs", "localhost.pem");
+var BRIDGE_KEY_PATH = (0, import_node_path2.resolve)(PROJECT_ROOT, "certs", "localhost-key.pem");
+var ADDIN_STATIC_DIR = (0, import_node_path2.resolve)(PROJECT_ROOT, "addin");
 var cliArgs = process.argv.slice(2);
 var enableStdio = cliArgs.includes("--stdio");
 var enableHttp = cliArgs.includes("--http");
@@ -35501,6 +35506,21 @@ if (bridgeActive && bridgeTls && (!(0, import_node_fs2.existsSync)(BRIDGE_CERT_P
   process.exit(1);
 }
 var BRIDGE_PORT = Number(process.env.BRIDGE_PORT) || (bridgeTls ? BRIDGE_DEFAULT_HTTPS_PORT : BRIDGE_DEFAULT_HTTP_PORT);
+function autoSideloadManifest(tls) {
+  const wefDir = (0, import_node_path2.join)((0, import_node_os2.homedir)(), "Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef");
+  const manifestName = tls ? "manifest-https.xml" : "manifest.xml";
+  const src = (0, import_node_path2.resolve)(ADDIN_STATIC_DIR, manifestName);
+  const dest = (0, import_node_path2.join)(wefDir, "manifest.xml");
+  try {
+    if (!(0, import_node_fs2.existsSync)(src)) return;
+    (0, import_node_fs2.mkdirSync)(wefDir, { recursive: true });
+    (0, import_node_fs2.copyFileSync)(src, dest);
+    console.error("[sideload] Add-in manifest installed for PowerPoint");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[sideload] Warning: could not sideload manifest: ${msg}`);
+  }
+}
 var pool = new ConnectionPool();
 var mcpHttpTransports = /* @__PURE__ */ new Map();
 function createMcpServer(getSessionId, getActiveSessionCount) {
@@ -35606,6 +35626,11 @@ async function handleMcpDelete(req, res) {
 }
 function serveStatic(req, res) {
   const rawUrl = (req.url ?? "/").split("?")[0];
+  if (rawUrl === "/health" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", connections: pool.size }));
+    return;
+  }
   if (rawUrl === "/api/test") {
     let target;
     try {
@@ -35648,6 +35673,7 @@ function serveStatic(req, res) {
   res.end(content);
 }
 if (bridgeActive) {
+  autoSideloadManifest(bridgeTls);
   const bridgeServer = bridgeTls ? (0, import_node_https.createServer)({ cert: (0, import_node_fs2.readFileSync)(BRIDGE_CERT_PATH), key: (0, import_node_fs2.readFileSync)(BRIDGE_KEY_PATH) }, serveStatic) : (0, import_node_http.createServer)(serveStatic);
   const wss = new import_websocket_server.default({ server: bridgeServer });
   wss.on("connection", (ws) => {

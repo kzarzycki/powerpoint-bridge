@@ -2,7 +2,12 @@
 
 ## Plugin install (recommended)
 
-If you installed powerpoint-bridge as a Claude Code plugin (`/plugin install`), MCP is configured automatically. Run `/ppt-bridge-setup` to check certs, manifest, and server status.
+If you installed powerpoint-bridge as a Claude Code plugin, everything is automatic:
+- MCP server starts via stdio when Claude Code launches
+- Bridge server starts in the same process (add-in connection on port 8080)
+- Add-in manifest is auto-sideloaded to PowerPoint on first run
+
+Verify by calling `list_presentations`. If it returns results or "No presentations connected", setup is complete.
 
 ## Per-project setup (standalone)
 
@@ -10,7 +15,7 @@ For standalone users without the plugin, run these steps when asked to enable Po
 
 ### 1. Check if already configured
 
-Look for `powerpoint-bridge` in the project's `.mcp.json`. If it exists and points to `http://localhost:3001/mcp`, skip to step 4 (verify).
+Look for `powerpoint-bridge` in the project's `.mcp.json`. If it exists, skip to step 3 (verify).
 
 ### 2. Add MCP config
 
@@ -20,24 +25,15 @@ Create or merge into the project's `.mcp.json`:
 {
   "mcpServers": {
     "powerpoint-bridge": {
-      "type": "http",
-      "url": "http://localhost:3001/mcp"
+      "command": "node",
+      "args": ["<path-to-powerpoint-bridge>/server/index.ts", "--stdio", "--bridge"]
     }
   }
 }
 ```
 
-If `.mcp.json` already exists with other servers, merge — do not overwrite.
+Replace `<path-to-powerpoint-bridge>` with the absolute path to the repo. If `.mcp.json` already exists with other servers, merge — do not overwrite.
 
-### 3. Check server is running
-
-```bash
-curl -sf http://localhost:3001/health
-```
-
-- If responds with JSON containing `"status":"ok"` — server is running, continue to step 4.
-- If fails — tell user: "The bridge server isn't running. Start it with `npm start` from the powerpoint-bridge repo directory." Optionally suggest setting up a launchd plist for persistent auto-start if the user wants the server to run automatically.
-
-### 4. Verify connectivity
+### 3. Verify connectivity
 
 Call `list_presentations`. If it returns results or "No presentations connected", setup is complete. Report status to user.
