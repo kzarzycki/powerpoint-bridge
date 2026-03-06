@@ -7,12 +7,12 @@ Build a system that lets Claude Code manipulate **live, open** PowerPoint presen
 ## Architecture
 
 ```
-Claude Code  <--MCP HTTP-->  Bridge Server (Node.js)  <--WS-->  PowerPoint Add-in (Office.js)
-                                    |                                     |
-                              localhost:3001/mcp                   WKWebView sandbox
-                              localhost:8080 (HTTP)                Office.js API 1.1-1.9
-                              serves add-in files                  executes commands on
-                              WebSocket server                     live presentation
+Claude Code  <--MCP STDIO/HTTP-->  Bridge Server (Node.js)  <--WS-->  PowerPoint Add-in (Office.js)
+                                          |                                     |
+                                    STDIO (default)                      WKWebView sandbox
+                                    or HTTP (:3001/mcp)                  Office.js API 1.1-1.9
+                                    localhost:8080 (HTTP)                executes commands on
+                                    serves add-in files + WS             live presentation
 ```
 
 Three components in one repo:
@@ -26,7 +26,7 @@ Three components in one repo:
 ### 2. `server/` - Bridge Server (Node.js)
 - HTTP server serving add-in static files (HTTPS opt-in via `BRIDGE_TLS=1`)
 - WS (WebSocket) server for add-in connection (WSS when TLS enabled)
-- MCP server (HTTP transport on port 3001) exposing tools to Claude Code
+- MCP server (STDIO default, HTTP on port 3001 for standalone) exposing tools to Claude Code
 - All three roles in one process for simplicity
 
 ### 3. `certs/` - Optional Local TLS Certificates

@@ -23,7 +23,7 @@ import { clearSessionWarnings, registerTools } from './tools.ts'
 const BRIDGE_DEFAULT_HTTP_PORT = 8080
 const BRIDGE_DEFAULT_HTTPS_PORT = 8443
 const MCP_HTTP_PORT = Number(process.env.MCP_PORT) || 3001
-const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
+const SCRIPT_DIR = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = resolve(SCRIPT_DIR, '..')
 const BRIDGE_CERT_PATH = resolve(PROJECT_ROOT, 'certs', 'localhost.pem')
 const BRIDGE_KEY_PATH = resolve(PROJECT_ROOT, 'certs', 'localhost-key.pem')
@@ -254,6 +254,12 @@ async function handleMcpDelete(req: IncomingMessage, res: ServerResponse): Promi
 
 function serveStatic(req: IncomingMessage, res: ServerResponse): void {
   const rawUrl = (req.url ?? '/').split('?')[0]
+
+  if (rawUrl === '/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ status: 'ok', connections: pool.size }))
+    return
+  }
 
   if (rawUrl === '/api/test') {
     let target: ReturnType<ConnectionPool['resolveTarget']>

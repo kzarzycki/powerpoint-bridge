@@ -9,6 +9,19 @@ Unlike file-based tools (python-pptx), PowerPoint Bridge works with presentation
 
 ## Installation
 
+### Claude Code Plugin (recommended)
+
+Zero-config install from the marketplace. MCP auto-starts, add-in auto-sideloads, skill included.
+
+```
+/plugin marketplace add kzarzycki/powerpoint-bridge
+/plugin install powerpoint-bridge@powerpoint-bridge
+```
+
+Then restart PowerPoint, open a presentation, and click the bridge add-in in the ribbon.
+
+### npx (any MCP client)
+
 Run as an MCP server via npx (no install needed):
 
 ```bash
@@ -78,7 +91,36 @@ Then configure your MCP client:
 }
 ```
 
-> **Note:** The PowerPoint add-in must still be sideloaded separately. See [Setup](#setup) for details.
+> **Note:** The PowerPoint add-in must still be sideloaded separately. Run `npx powerpoint-bridge --sideload` or see [Troubleshooting](#troubleshooting).
+
+### Claude Desktop Extension
+
+Build and install as a one-click `.mcpb` extension (from source):
+
+```bash
+git clone https://github.com/kzarzycki/powerpoint-bridge.git
+cd powerpoint-bridge
+npm install && npm run build:mcpb
+open powerpoint-bridge-*.mcpb   # opens Claude Desktop installer
+```
+
+The extension auto-starts the bridge and auto-sideloads the add-in. Restart PowerPoint after first install.
+
+**Known limitations:**
+- **Chat mode only** — Cowork and Code tabs don't load desktop extensions ([upstream bug](https://github.com/anthropics/claude-code/issues/20377))
+- **Single instance** — only one bridge can run on port 8080
+
+### From source (development)
+
+```bash
+git clone https://github.com/kzarzycki/powerpoint-bridge.git
+cd powerpoint-bridge
+npm install
+npm run sideload     # copies manifest to PowerPoint's add-in folder
+npm start            # starts bridge server + MCP HTTP transport
+```
+
+Then restart PowerPoint, open a presentation, and click the bridge add-in in the ribbon.
 
 ## Motivation
 
@@ -87,19 +129,23 @@ This project was inspired by the [Claude in PowerPoint](https://support.anthropi
 ## Architecture
 
 ```
-AI Assistant  <--MCP HTTP-->  Bridge Server (Node.js)  <--WS-->  PowerPoint Add-in (Office.js)
-                                     |                                     |
-                               localhost:3001/mcp                   WKWebView sandbox
-                               localhost:8080 (HTTP)                Office.js API 1.1-1.9
-                               serves add-in files                  executes commands on
-                               WebSocket server                     live presentation
+AI Assistant  <--MCP STDIO/HTTP-->  Bridge Server (Node.js)  <--WS-->  PowerPoint Add-in (Office.js)
+                                           |                                     |
+                                     STDIO (default)                      WKWebView sandbox
+                                     or HTTP (:3001/mcp)                  Office.js API 1.1-1.9
+                                     localhost:8080 (HTTP)                executes commands on
+                                     serves add-in files + WS             live presentation
 ```
+
+Two MCP transports are supported:
+- **STDIO** (default) — used by plugin installs and `--stdio` flag; the MCP client spawns the server process directly
+- **HTTP** — `localhost:3001/mcp`; used by `npm start` for standalone/development setups
 
 Three components in one repo:
 
 - **`addin/`** — Office.js taskpane add-in that loads inside PowerPoint and connects as a WebSocket client
 - **`server/`** — Node.js bridge server: HTTP + WS + MCP transport (HTTPS/WSS opt-in via `BRIDGE_TLS=1`)
-- **`skills/powerpoint-live/`** — Claude Code skill with tool docs, code patterns, and setup guide. Installed globally by `npm run setup`.
+- **`skills/powerpoint-live/`** — Claude Code skill with tool docs, code patterns, and setup guide (auto-installed with plugin)
 - **`certs/`** — Optional local TLS certificates for HTTPS mode (generated, gitignored)
 
 ## Prerequisites
@@ -111,48 +157,6 @@ Three components in one repo:
 ```bash
 brew install node
 ```
-
-## Install
-
-### Let Claude do it
-
-```bash
-git clone https://github.com/kzarzycki/powerpoint-bridge.git
-```
-
-Then tell Claude: "install powerpoint bridge from `<path>`" — it will handle `npm install`, sideloading, and per-project config.
-
-### Manual install
-
-```bash
-git clone https://github.com/kzarzycki/powerpoint-bridge.git
-cd powerpoint-bridge
-npm install
-npm run setup      # Sideloads add-in, installs Claude Code skill
-```
-
-Then restart PowerPoint, open a presentation, and click the bridge add-in in the ribbon. Start the server:
-
-```bash
-npm start
-```
-
-After setup, the `powerpoint-live` skill is globally available. In any project, ask Claude: "enable powerpoint mcp in this project". See the [setup guide](skills/powerpoint-live/references/setup.md) for per-project configuration details.
-
-## Claude Desktop Extension
-
-Alternatively, build and install as a one-click `.mcpb` extension (from source):
-
-```bash
-npm run build:mcpb    # produces powerpoint-bridge-v0.1.0.mcpb
-open powerpoint-bridge-v0.1.0.mcpb   # opens Claude Desktop installer
-```
-
-The extension auto-starts the bridge and auto-sideloads the add-in. Restart PowerPoint after first install.
-
-**Known limitations:**
-- **Chat mode only** — Cowork and Code tabs don't load desktop extensions ([upstream bug](https://github.com/anthropics/claude-code/issues/20377))
-- **Single instance** — only one bridge can run on port 8080
 
 ## Available Tools
 
@@ -183,7 +187,7 @@ When multiple presentations are open, pass `presentationId` (from `list_presenta
 PowerPoint Bridge runs entirely on localhost:
 
 - The bridge server binds to `localhost:8080` (HTTP) or `localhost:8443` (HTTPS with `BRIDGE_TLS=1`)
-- The MCP HTTP server binds to `localhost:3001`
+- MCP transport is either STDIO (no network port) or HTTP on `localhost:3001`
 - No data leaves your machine
 
 **`execute_officejs` runs arbitrary code** inside PowerPoint's Office.js runtime. This is by design — it gives the AI full access to the Office.js API. Only use this with MCP clients you trust.
@@ -191,11 +195,11 @@ PowerPoint Bridge runs entirely on localhost:
 ## Troubleshooting
 
 **Add-in not appearing in PowerPoint**
-1. Run `npm run sideload` and restart PowerPoint
+1. Run `npm run sideload` (or `npx powerpoint-bridge --sideload`) and restart PowerPoint
 2. Check that the file exists: `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/manifest.xml`
 
 **Add-in shows "Disconnected"**
-Make sure the bridge server is running (`npm start`). You can verify with `curl http://localhost:3001/health`. The add-in auto-reconnects with exponential backoff.
+Make sure the bridge server is running. In plugin mode the server auto-starts with Claude Code — call any tool to verify. For standalone installs, run `npm start` and verify with `curl http://localhost:8080/health`. The add-in auto-reconnects with exponential backoff.
 
 **Using HTTPS mode**
 If plain HTTP/WS doesn't work in your environment, switch to HTTPS:
