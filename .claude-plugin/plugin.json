@@ -1,0 +1,11 @@
+{
+  "name": "powerpoint-bridge",
+  "description": "MCP bridge for live-editing open PowerPoint presentations on macOS via Office.js",
+  "version": "0.1.0",
+  "author": {
+    "name": "Krzysztof Zarzycki",
+    "email": "k.zarzycki@gmail.com"
+  },
+  "repository": "https://github.com/kzarzycki/powerpoint-bridge",
+  "license": "MIT"
+}
