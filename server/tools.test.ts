@@ -828,10 +828,10 @@ describe('MCP Tools', () => {
       expect(revJson.params.code).toContain('revisionNumber')
       pool.handleResponse(revJson.id, 'response', 42)
 
-      // Second command: export base64
+      // Second command: export via getFileAsync
       await new Promise((r) => setTimeout(r, 10))
       const exportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[1][0])
-      expect(exportJson.params.code).toContain('exportAsBase64')
+      expect(exportJson.params.code).toContain('getFileAsync')
       pool.handleResponse(exportJson.id, 'response', 'UEsDBBQAAAA=')
 
       const result = await toolPromise
@@ -900,10 +900,10 @@ describe('MCP Tools', () => {
       const revJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
       pool.handleResponse(revJson.id, 'response', 6)
 
-      // Should trigger export
+      // Should trigger export via getFileAsync
       await new Promise((r) => setTimeout(r, 10))
       const exportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[1][0])
-      expect(exportJson.params.code).toContain('exportAsBase64')
+      expect(exportJson.params.code).toContain('getFileAsync')
       pool.handleResponse(exportJson.id, 'response', 'UEsDBBQAAAA=')
 
       const result = await toolPromise
