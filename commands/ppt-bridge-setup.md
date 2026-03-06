@@ -1,27 +1,15 @@
 ---
 description: Check and configure the PowerPoint bridge (certs, manifest, server)
+allowed-tools:
+  - Bash
+  - Read
 ---
 
 # PowerPoint Bridge Setup
 
 You are running the setup check for the PowerPoint MCP bridge. Follow each step in order, report status, and stop at the first issue that needs user action.
 
-## Step 1: Check TLS certificates
-
-Check if certificate files exist:
-
-```bash
-ls "${CLAUDE_PLUGIN_ROOT}/certs/localhost.pem" "${CLAUDE_PLUGIN_ROOT}/certs/localhost-key.pem" 2>/dev/null
-```
-
-- If both files exist: report "Certs: OK" and continue.
-- If missing: tell the user to generate them:
-  ```
-  cd <plugin-root> && npx mkcert -install && npx mkcert -key-file certs/localhost-key.pem -cert-file certs/localhost.pem localhost 127.0.0.1
-  ```
-  Note: `mkcert -install` requires an interactive terminal for the macOS password prompt. Stop here and wait for the user.
-
-## Step 2: Check add-in manifest sideload
+## Step 1: Check add-in manifest sideload
 
 Check if the manifest is sideloaded:
 
@@ -37,7 +25,7 @@ ls ~/Library/Containers/com.microsoft.PowerPoint/Data/Documents/wef/ 2>/dev/null
   ```
   Report "Manifest: sideloaded" and continue.
 
-## Step 3: Check bridge server
+## Step 2: Check bridge server
 
 Test if the bridge server is running:
 
@@ -52,6 +40,23 @@ curl -sf http://localhost:3001/health
   ```
   Stop here and wait for the user.
 
+## Step 3: Check TLS certificates (optional)
+
+Only check this if the user has `BRIDGE_TLS=1` set or explicitly asks about HTTPS/WSS. Otherwise skip and note "Certs: skipped (not needed for HTTP/WS mode)".
+
+If checking: verify certificate files exist:
+
+```bash
+ls "${CLAUDE_PLUGIN_ROOT}/certs/localhost.pem" "${CLAUDE_PLUGIN_ROOT}/certs/localhost-key.pem" 2>/dev/null
+```
+
+- If both files exist: report "Certs: OK" and continue.
+- If missing: tell the user to generate them:
+  ```
+  cd <plugin-root> && brew install mkcert && mkcert -install && npm run setup-certs
+  ```
+  Note: `mkcert -install` requires an interactive terminal for the macOS password prompt.
+
 ## Step 4: Report summary
 
 Print a summary table:
@@ -59,9 +64,9 @@ Print a summary table:
 ```
 PowerPoint Bridge Status
 ========================
-Certs:    OK
 Manifest: OK (sideloaded)
-Server:   running
+Server:   running (N presentations connected)
+Certs:    skipped (HTTP/WS mode)
 
 Ready to use! Open a presentation in PowerPoint and the add-in will connect automatically.
 ```

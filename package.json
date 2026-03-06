@@ -10,6 +10,11 @@
   "files": [
     "dist/",
     "addin/",
+    ".claude-plugin/",
+    ".mcp.json",
+    "commands/",
+    "skills/",
+    "scripts/",
     "README.md",
     "LICENSE"
   ],
