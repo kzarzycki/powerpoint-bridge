@@ -14,10 +14,10 @@ This project was inspired by the [Claude in PowerPoint](https://support.anthropi
 ## Architecture
 
 ```
-AI Assistant  <--MCP HTTP-->  Bridge Server (Node.js)  <--WSS-->  PowerPoint Add-in (Office.js)
-                                     |                                      |
-                               localhost:3001/mcp                    WKWebView sandbox
-                               localhost:8443 (HTTPS)               Office.js API 1.1-1.9
+AI Assistant  <--MCP HTTP-->  Bridge Server (Node.js)  <--WS-->  PowerPoint Add-in (Office.js)
+                                     |                                     |
+                               localhost:3001/mcp                   WKWebView sandbox
+                               localhost:8080 (HTTP)                Office.js API 1.1-1.9
                                serves add-in files                  executes commands on
                                WebSocket server                     live presentation
 ```
@@ -25,19 +25,18 @@ AI Assistant  <--MCP HTTP-->  Bridge Server (Node.js)  <--WSS-->  PowerPoint Add
 Three components in one repo:
 
 - **`addin/`** — Office.js taskpane add-in that loads inside PowerPoint and connects as a WebSocket client
-- **`server/`** — Node.js bridge server: HTTPS + WSS + MCP HTTP transport
+- **`server/`** — Node.js bridge server: HTTP + WS + MCP transport (HTTPS/WSS opt-in via `BRIDGE_TLS=1`)
 - **`skills/powerpoint-live/`** — Claude Code skill with tool docs, code patterns, and setup guide. Installed globally by `npm run setup`.
-- **`certs/`** — Local TLS certificates (generated, gitignored)
+- **`certs/`** — Optional local TLS certificates for HTTPS mode (generated, gitignored)
 
 ## Prerequisites
 
 - **macOS** (primary platform)
 - **Node.js >= 24** (uses native TypeScript execution)
 - **Microsoft PowerPoint for Mac**
-- **mkcert** for local TLS certificates
 
 ```bash
-brew install mkcert node
+brew install node
 ```
 
 ## Install
@@ -48,7 +47,7 @@ brew install mkcert node
 git clone https://github.com/kzarzycki/powerpoint-bridge.git
 ```
 
-Then tell Claude: "install powerpoint bridge from `<path>`" — it will handle `npm install`, certs, sideloading, and per-project config.
+Then tell Claude: "install powerpoint bridge from `<path>`" — it will handle `npm install`, sideloading, and per-project config.
 
 ### Manual install
 
@@ -56,8 +55,7 @@ Then tell Claude: "install powerpoint bridge from `<path>`" — it will handle `
 git clone https://github.com/kzarzycki/powerpoint-bridge.git
 cd powerpoint-bridge
 npm install
-mkcert -install    # One-time: adds mkcert CA to macOS Keychain (requires password)
-npm run setup      # Generates certs, sideloads add-in, installs Claude Code skill
+npm run setup      # Sideloads add-in, installs Claude Code skill
 ```
 
 Then restart PowerPoint, open a presentation, and click the bridge add-in in the ribbon. Start the server:
@@ -127,17 +125,13 @@ When multiple presentations are open, pass `presentationId` (from `list_presenta
 
 PowerPoint Bridge runs entirely on localhost:
 
-- The HTTPS/WSS server binds to `localhost:8443`
+- The bridge server binds to `localhost:8080` (HTTP) or `localhost:8443` (HTTPS with `BRIDGE_TLS=1`)
 - The MCP HTTP server binds to `localhost:3001`
-- TLS certificates are self-signed via mkcert and trusted only on your machine
 - No data leaves your machine
 
 **`execute_officejs` runs arbitrary code** inside PowerPoint's Office.js runtime. This is by design — it gives the AI full access to the Office.js API. Only use this with MCP clients you trust.
 
 ## Troubleshooting
-
-**"TLS certificate files not found"**
-Run `npm run setup-certs` to generate certificates. If this is your first time, also run `mkcert -install` first.
 
 **Add-in not appearing in PowerPoint**
 1. Run `npm run sideload` and restart PowerPoint
@@ -146,15 +140,19 @@ Run `npm run setup-certs` to generate certificates. If this is your first time, 
 **Add-in shows "Disconnected"**
 Make sure the bridge server is running (`npm start`). You can verify with `curl http://localhost:3001/health`. The add-in auto-reconnects with exponential backoff.
 
-**"Certificate not trusted" in browser**
-Run `mkcert -install` to add the mkcert CA to your system Keychain. You may need to enter your macOS password.
+**Using HTTPS mode**
+If plain HTTP/WS doesn't work in your environment, switch to HTTPS:
+1. `brew install mkcert && mkcert -install` (one-time, requires macOS password)
+2. `npm run setup-certs` to generate certificates
+3. `npm run sideload:https` and restart PowerPoint
+4. `BRIDGE_TLS=1 npm start`
 
 ## Platform Support
 
 | Platform | Status |
 |----------|--------|
 | macOS | Supported (primary) |
-| Windows | Untested — different sideloading path, may not require WSS |
+| Windows | Untested — different sideloading path |
 | Linux | Not supported (no PowerPoint for Linux) |
 
 ## Contributing

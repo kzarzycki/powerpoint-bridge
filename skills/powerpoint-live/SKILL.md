@@ -8,7 +8,7 @@ description: "Manipulate live, open PowerPoint presentations on macOS via Office
 Edit live, open PowerPoint presentations through an MCP bridge. Changes appear in real-time.
 
 ```
-Claude Code  ──MCP HTTP (localhost:3001)──>  Bridge Server  ──WSS──>  PowerPoint Add-in  ──>  Live Presentation
+Claude Code  ──MCP HTTP (localhost:3001)──>  Bridge Server  ──WS──>  PowerPoint Add-in  ──>  Live Presentation
 ```
 
 ## Setup

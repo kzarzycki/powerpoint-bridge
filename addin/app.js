@@ -30,8 +30,10 @@ function initWebSocket() {
 }
 
 function connect() {
+  var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  var host = window.location.host
   try {
-    ws = new WebSocket('wss://localhost:8443')
+    ws = new WebSocket(`${protocol}//${host}`)
   } catch (err) {
     console.error('WebSocket constructor error:', err)
     scheduleReconnect()
@@ -41,6 +43,7 @@ function connect() {
   ws.onopen = () => {
     reconnectAttempt = 0
     updateStatus('connected')
+    updateBridgeUrl()
     console.log('WebSocket connected')
     var documentUrl = null
     try {
@@ -77,6 +80,12 @@ function scheduleReconnect() {
   reconnectAttempt++
   console.log(`Reconnecting in ${delay + jitter}ms (attempt ${reconnectAttempt})`)
   setTimeout(connect, delay + jitter)
+}
+
+/* Bridge URL display */
+function updateBridgeUrl() {
+  var el = document.getElementById('bridge-url')
+  if (el) el.textContent = window.location.origin
 }
 
 /* Status display */

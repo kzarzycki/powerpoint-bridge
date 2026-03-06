@@ -7,10 +7,10 @@ Build a system that lets Claude Code manipulate **live, open** PowerPoint presen
 ## Architecture
 
 ```
-Claude Code  <--MCP HTTP-->  Bridge Server (Node.js)  <--WSS-->  PowerPoint Add-in (Office.js)
-                                    |                                      |
-                              localhost:3001/mcp                    WKWebView sandbox
-                              localhost:8443 (HTTPS)               Office.js API 1.1-1.9
+Claude Code  <--MCP HTTP-->  Bridge Server (Node.js)  <--WS-->  PowerPoint Add-in (Office.js)
+                                    |                                     |
+                              localhost:3001/mcp                   WKWebView sandbox
+                              localhost:8080 (HTTP)                Office.js API 1.1-1.9
                               serves add-in files                  executes commands on
                               WebSocket server                     live presentation
 ```
@@ -24,14 +24,13 @@ Three components in one repo:
 - Manifest XML for sideloading
 
 ### 2. `server/` - Bridge Server (Node.js)
-- HTTPS server serving add-in static files
-- WSS (secure WebSocket) server for add-in connection
+- HTTP server serving add-in static files (HTTPS opt-in via `BRIDGE_TLS=1`)
+- WS (WebSocket) server for add-in connection (WSS when TLS enabled)
 - MCP server (HTTP transport on port 3001) exposing tools to Claude Code
 - All three roles in one process for simplicity
 
-### 3. `certs/` - Local TLS Certificates
-- Generated via `mkcert` for localhost
-- Required because WKWebView enforces WSS (no plain ws://)
+### 3. `certs/` - Optional Local TLS Certificates
+- Generated via `mkcert` for localhost (only needed when `BRIDGE_TLS=1`)
 - `.gitignore`d
 
 ## Usage Documentation
@@ -40,7 +39,7 @@ For tool reference, code patterns, and usage — see the **powerpoint-live** ski
 
 ## Technical Constraints
 
-- **WSS mandatory** - macOS WKWebView won't connect to `ws://localhost`, must use `wss://`
+- **HTTPS/WSS opt-in** - Set `BRIDGE_TLS=1` to use HTTPS/WSS (requires certs via `npm run setup-certs`)
 - **Add-in cannot host servers** - sandboxed in WKWebView, can only make outbound connections
 - **Limited image API** - Image insertion via Common API `setSelectedDataAsync` (`insert_image` tool); no shape-level `addPicture()` yet (BETA only)
 - **No charts** - Office.js cannot create charts
@@ -50,10 +49,10 @@ For tool reference, code patterns, and usage — see the **powerpoint-live** ski
 
 ## Key Technical Decisions
 
-1. **Single Node.js process** for HTTPS + WSS + MCP (simplicity over microservices)
+1. **Single Node.js process** for HTTP(S) + WS(S) + MCP (simplicity over microservices)
 2. **TypeScript** for add-in and server (Office.js has good TS types)
 3. **JSON command protocol** with request IDs for async response matching
-4. **mkcert** for TLS (simpler than OpenSSL, auto-trusts in Keychain)
+4. **Plain HTTP/WS by default**, HTTPS/WSS opt-in via `BRIDGE_TLS=1` + mkcert certs
 5. **Sideloading** for development (no Microsoft store submission needed)
 
 ## Command Protocol (WebSocket Messages)

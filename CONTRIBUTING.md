@@ -4,7 +4,6 @@
 
 - macOS with PowerPoint for Mac installed
 - Node.js >= 24
-- mkcert (`brew install mkcert`)
 
 ## Development Setup
 
@@ -12,13 +11,7 @@
 git clone https://github.com/kzarzycki/powerpoint-bridge.git
 cd powerpoint-bridge
 npm install
-
-# Generate TLS certs (one-time)
-mkcert -install
-npm run setup-certs
-
-# Sideload the add-in
-npm run sideload
+npm run sideload    # Sideload the add-in manifest
 # Restart PowerPoint after sideloading
 ```
 
@@ -26,7 +19,7 @@ npm run sideload
 
 ```
 server/
-  index.ts      # Entrypoint: HTTPS + WSS + MCP servers, wiring
+  index.ts      # Entrypoint: HTTP(S) + WS(S) + MCP servers, wiring
   bridge.ts     # ConnectionPool class — manages add-in WebSocket connections
   tools.ts      # MCP tool definitions (list_presentations, get_presentation, etc.)
   bridge.test.ts
@@ -35,7 +28,7 @@ addin/
   index.html    # Add-in taskpane UI
   app.js        # WebSocket client + Office.js command execution
   manifest.xml  # Office Add-in manifest for sideloading
-certs/          # Generated TLS certs (gitignored)
+certs/          # Optional TLS certs for HTTPS mode (gitignored)
 ```
 
 ## Scripts
