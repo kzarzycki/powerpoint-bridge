@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "powerpoint-bridge",
-      "source": ".",
+      "source": "./",
       "description": "Live-edit open PowerPoint presentations via Office.js MCP bridge"
     }
   ]
