@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
-import { extname, join, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, extname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -21,9 +23,11 @@ import { clearSessionWarnings, registerTools } from './tools.ts'
 const BRIDGE_DEFAULT_HTTP_PORT = 8080
 const BRIDGE_DEFAULT_HTTPS_PORT = 8443
 const MCP_HTTP_PORT = Number(process.env.MCP_PORT) || 3001
-const BRIDGE_CERT_PATH = './certs/localhost.pem'
-const BRIDGE_KEY_PATH = './certs/localhost-key.pem'
-const ADDIN_STATIC_DIR = resolve('./addin')
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
+const PROJECT_ROOT = resolve(SCRIPT_DIR, '..')
+const BRIDGE_CERT_PATH = resolve(PROJECT_ROOT, 'certs', 'localhost.pem')
+const BRIDGE_KEY_PATH = resolve(PROJECT_ROOT, 'certs', 'localhost-key.pem')
+const ADDIN_STATIC_DIR = resolve(PROJECT_ROOT, 'addin')
 
 // ---------------------------------------------------------------------------
 // Flag parsing
@@ -92,6 +96,26 @@ if (bridgeActive && bridgeTls && (!existsSync(BRIDGE_CERT_PATH) || !existsSync(B
 
 const BRIDGE_PORT =
   Number(process.env.BRIDGE_PORT) || (bridgeTls ? BRIDGE_DEFAULT_HTTPS_PORT : BRIDGE_DEFAULT_HTTP_PORT)
+
+// ---------------------------------------------------------------------------
+// Auto-sideload add-in manifest
+// ---------------------------------------------------------------------------
+
+function autoSideloadManifest(tls: boolean): void {
+  const wefDir = join(homedir(), 'Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef')
+  const manifestName = tls ? 'manifest-https.xml' : 'manifest.xml'
+  const src = resolve(ADDIN_STATIC_DIR, manifestName)
+  const dest = join(wefDir, 'manifest.xml')
+  try {
+    if (!existsSync(src)) return
+    mkdirSync(wefDir, { recursive: true })
+    copyFileSync(src, dest)
+    console.error('[sideload] Add-in manifest installed for PowerPoint')
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[sideload] Warning: could not sideload manifest: ${msg}`)
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Shared state
@@ -285,6 +309,8 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
 // ---------------------------------------------------------------------------
 
 if (bridgeActive) {
+  autoSideloadManifest(bridgeTls)
+
   const bridgeServer = bridgeTls
     ? createHttpsServer({ cert: readFileSync(BRIDGE_CERT_PATH), key: readFileSync(BRIDGE_KEY_PATH) }, serveStatic)
     : createHttpServer(serveStatic)

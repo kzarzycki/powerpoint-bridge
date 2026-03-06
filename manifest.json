@@ -1,0 +1,54 @@
+{
+  "manifest_version": "0.3",
+  "name": "powerpoint-bridge",
+  "display_name": "PowerPoint Bridge",
+  "version": "0.1.0",
+  "description": "Manipulate live, open PowerPoint presentations via Office.js — add shapes, text, images, and more to open presentations in real time.",
+  "long_description": "PowerPoint Bridge lets Claude control live, open PowerPoint presentations on macOS through Office.js APIs. Unlike file-based solutions, this extension manipulates the presentation in real time.\n\n**Capabilities:**\n- Add and modify shapes, text boxes, tables, and images\n- Read slide structure and content\n- Take visual screenshots of slides\n- Copy slides between presentations\n- Execute arbitrary Office.js code\n\n**How it works:**\nThe extension runs a local bridge server that connects to a PowerPoint add-in via WebSocket. On first launch, the add-in is automatically installed into PowerPoint.\n\n**Requirements:** Microsoft PowerPoint for Mac (16.96+), macOS.",
+  "author": {
+    "name": "Krzysztof Zarzycki",
+    "url": "https://github.com/kzarzycki"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kzarzycki/powerpoint-bridge"
+  },
+  "homepage": "https://github.com/kzarzycki/powerpoint-bridge#readme",
+  "support": "https://github.com/kzarzycki/powerpoint-bridge/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js", "--stdio", "--bridge"],
+      "env": {}
+    }
+  },
+  "tools": [
+    { "name": "list_presentations", "description": "List all connected PowerPoint presentations" },
+    { "name": "get_presentation", "description": "Get the structure of a presentation (slides and shapes)" },
+    { "name": "get_slide", "description": "Get detailed information about shapes on a specific slide" },
+    { "name": "get_slide_image", "description": "Capture a slide as a PNG screenshot" },
+    { "name": "get_deck_overview", "description": "Visual overview of all slides with thumbnails" },
+    { "name": "get_local_copy", "description": "Export presentation to a local file path" },
+    { "name": "copy_slides", "description": "Copy slides between open presentations" },
+    { "name": "insert_image", "description": "Insert an image onto a slide" },
+    { "name": "execute_officejs", "description": "Execute arbitrary Office.js code in the live presentation" }
+  ],
+  "compatibility": {
+    "platforms": ["darwin"],
+    "runtimes": {
+      "node": ">=16.0.0"
+    }
+  },
+  "keywords": [
+    "powerpoint",
+    "office",
+    "presentation",
+    "slides",
+    "office-js",
+    "live-editing"
+  ],
+  "license": "MIT"
+}

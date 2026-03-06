@@ -139,37 +139,20 @@ npm start
 
 After setup, the `powerpoint-live` skill is globally available. In any project, ask Claude: "enable powerpoint mcp in this project". See the [setup guide](skills/powerpoint-live/references/setup.md) for per-project configuration details.
 
-## Other MCP Clients
+## Claude Desktop Extension
 
-### Claude Desktop
+Alternatively, build and install as a one-click `.mcpb` extension (from source):
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "powerpoint-bridge": {
-      "type": "http",
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
+```bash
+npm run build:mcpb    # produces powerpoint-bridge-v0.1.0.mcpb
+open powerpoint-bridge-v0.1.0.mcpb   # opens Claude Desktop installer
 ```
 
-### VS Code / Cursor
+The extension auto-starts the bridge and auto-sideloads the add-in. Restart PowerPoint after first install.
 
-Add to your workspace `.vscode/mcp.json`:
-
-```json
-{
-  "servers": {
-    "powerpoint-bridge": {
-      "type": "http",
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
-```
+**Known limitations:**
+- **Chat mode only** — Cowork and Code tabs don't load desktop extensions ([upstream bug](https://github.com/anthropics/claude-code/issues/20377))
+- **Single instance** — only one bridge can run on port 8080
 
 ## Available Tools
 
