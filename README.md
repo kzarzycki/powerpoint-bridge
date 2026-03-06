@@ -109,6 +109,7 @@ Add to your workspace `.vscode/mcp.json`:
 | `get_deck_overview` | Returns thumbnails + text for all/selected slides in one call (efficient full-deck review) |
 | `copy_slides` | Copies slides between two open presentations (data stays server-side, never in Claude context) |
 | `insert_image` | Inserts an image from a file path, URL, or base64 data onto a slide |
+| `get_local_copy` | Returns a local file path for the presentation (passthrough for local, exports cloud files to temp .pptx) |
 | `execute_officejs` | Runs arbitrary Office.js code inside the live presentation |
 
 When multiple presentations are open, pass `presentationId` (from `list_presentations`) to target a specific one.

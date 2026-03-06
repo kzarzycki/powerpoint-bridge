@@ -26,6 +26,7 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 | `get_deck_overview` | Visual overview of all/selected slides in one call (thumbnails + text) | `slideRange?`, `imageWidth?` (default 480), `includeImages?`, `presentationId?` |
 | `copy_slides` | Copy slides between two open presentations (data stays server-side) | `sourceSlideIndex`, `sourcePresentationId`, `destinationPresentationId`, `formatting?`, `targetSlideId?` |
 | `insert_image` | Insert image from file path, URL, or base64 data (data stays server-side for file/url) | `source`, `sourceType` (`file`/`url`/`base64`), `slideIndex?`, `left?`, `top?`, `width?`, `height?`, `presentationId?` |
+| `get_local_copy` | Get a local .pptx file path (passthrough for local files, exports cloud files to temp) | `presentationId?` |
 | `execute_officejs` | Run arbitrary Office.js code in the live presentation | `code`, `presentationId?` |
 
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
@@ -53,6 +54,14 @@ Cannot do via Office.js — do not attempt:
 - Add animations or transitions
 - Apply gradients, shadows, or effects (solid fills only)
 - Edit slide masters or themes
+
+## Working with python-pptx
+
+For features Office.js cannot access (comments, chart data, embedded objects, master slides, custom XML parts), use `get_local_copy` to get a .pptx file path, then use python-pptx to process it.
+
+- `get_local_copy` returns the existing file path for local files, or exports cloud files to a temp .pptx
+- Reads the **saved** state — unsaved changes won't appear until the user saves
+- Cached by revision number — only re-exports when the presentation has been saved since last export
 
 ## Error Handling
 

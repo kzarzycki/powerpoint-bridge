@@ -1,7 +1,15 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { ConnectionPool } from './bridge.ts'
+
+// ---------------------------------------------------------------------------
+// Local copy cache: presentationId → { localPath, revision }
+// ---------------------------------------------------------------------------
+
+export const localCopyCache = new Map<string, { localPath: string; revision: number }>()
 
 // ---------------------------------------------------------------------------
 // Concurrent access warning helper
@@ -580,6 +588,127 @@ export function registerTools(
         }
 
         return { content }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: get_local_copy ---
+  server.tool(
+    'get_local_copy',
+    'Returns a local file path for the presentation. For local files, returns the existing path. For SharePoint/cloud files, exports server-side and saves to a temp .pptx. Caches by revision number — re-exports only when the presentation has been saved since last export.',
+    {
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+        const filePath = target.filePath
+
+        // Local file — already on disk
+        if (filePath && !filePath.startsWith('http')) {
+          if (!existsSync(filePath)) {
+            return {
+              content: [{ type: 'text' as const, text: `Error: Local file not found: ${filePath}` }],
+              isError: true,
+            }
+          }
+          return {
+            content: [{ type: 'text' as const, text: JSON.stringify({ localPath: filePath, source: 'local' }) }],
+          }
+        }
+
+        // Cloud file — check revision for cache validity
+        const revCode = `
+          var p = context.presentation.properties;
+          p.load("revisionNumber");
+          await context.sync();
+          return p.revisionNumber;
+        `
+        const currentRevision = (await pool.sendCommand('executeCode', { code: revCode }, target.ws)) as number
+
+        const cached = localCopyCache.get(target.presentationId)
+        if (cached && cached.revision === currentRevision && existsSync(cached.localPath)) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({ localPath: cached.localPath, source: 'cached', revision: currentRevision }),
+              },
+            ],
+          }
+        }
+
+        // Export fresh copy via Common API getFileAsync.
+        // NOTE: Presentation.exportAsBase64() doesn't exist. SlideCollection.exportAsBase64Presentation()
+        // exists (API 1.10) but crashes PowerPoint on macOS 16.100 (SIGABRT in OLEAutomation).
+        const exportCode = `
+          return new Promise(function(resolve, reject) {
+            Office.context.document.getFileAsync(Office.FileType.Compressed, { sliceSize: 4194304 }, function(result) {
+              if (result.status !== Office.AsyncResultStatus.Succeeded) {
+                reject(new Error(result.error.message));
+                return;
+              }
+              var file = result.value;
+              var sliceCount = file.sliceCount;
+              var sliceData = [];
+              var totalSize = 0;
+              function getNextSlice(index) {
+                if (index >= sliceCount) {
+                  file.closeAsync();
+                  var combined = new Uint8Array(totalSize);
+                  var offset = 0;
+                  for (var i = 0; i < sliceData.length; i++) {
+                    var arr = new Uint8Array(sliceData[i]);
+                    combined.set(arr, offset);
+                    offset += arr.length;
+                  }
+                  var binary = '';
+                  var chunk = 8192;
+                  for (var j = 0; j < combined.length; j += chunk) {
+                    binary += String.fromCharCode.apply(null, combined.subarray(j, Math.min(j + chunk, combined.length)));
+                  }
+                  resolve(btoa(binary));
+                  return;
+                }
+                file.getSliceAsync(index, function(sliceResult) {
+                  if (sliceResult.status !== Office.AsyncResultStatus.Succeeded) {
+                    file.closeAsync();
+                    reject(new Error(sliceResult.error.message));
+                    return;
+                  }
+                  sliceData.push(sliceResult.value.data);
+                  totalSize += sliceResult.value.data.length;
+                  getNextSlice(index + 1);
+                });
+              }
+              getNextSlice(0);
+            });
+          });
+        `
+        const base64 = (await pool.sendCommand('executeCode', { code: exportCode }, target.ws, 120_000)) as string
+
+        const filename = filePath
+          ? decodeURIComponent(filePath.split('/').pop() || 'presentation.pptx')
+          : 'presentation.pptx'
+        const dest = join(tmpdir(), `pptbridge-${Date.now()}-${filename}`)
+        writeFileSync(dest, Buffer.from(base64, 'base64'))
+
+        localCopyCache.set(target.presentationId, { localPath: dest, revision: currentRevision })
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({ localPath: dest, source: 'exported', revision: currentRevision }),
+            },
+          ],
+        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
