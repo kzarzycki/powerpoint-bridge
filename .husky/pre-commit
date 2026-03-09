@@ -1,2 +1,10 @@
+# Fail if server/ files are staged but dist/index.cjs is not
+if git diff --cached --name-only | grep -q '^server/' && \
+   ! git diff --cached --name-only | grep -q '^dist/index.cjs$'; then
+  echo "Error: server/ files changed but dist/index.cjs not staged."
+  echo "Run: npm run build && git add dist/index.cjs"
+  exit 1
+fi
+
 npx lint-staged
 npm run typecheck

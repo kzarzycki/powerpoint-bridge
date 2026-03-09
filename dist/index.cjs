@@ -35507,6 +35507,23 @@ if (bridgeActive && bridgeTls && (!(0, import_node_fs2.existsSync)(BRIDGE_CERT_P
 }
 var BRIDGE_PORT = Number(process.env.BRIDGE_PORT) || (bridgeTls ? BRIDGE_DEFAULT_HTTPS_PORT : BRIDGE_DEFAULT_HTTP_PORT);
 function autoSideloadManifest(tls) {
+  const markerFile = (0, import_node_path2.resolve)(PROJECT_ROOT, ".sideloaded");
+  const pkgPath = (0, import_node_path2.resolve)(PROJECT_ROOT, "package.json");
+  let currentVersion = "unknown";
+  try {
+    const pkg = JSON.parse((0, import_node_fs2.readFileSync)(pkgPath, "utf8"));
+    currentVersion = pkg.version;
+  } catch {
+  }
+  try {
+    const markerVersion = (0, import_node_fs2.readFileSync)(markerFile, "utf8").trim();
+    if (markerVersion === currentVersion) {
+      console.error("[sideload] Add-in already installed (use `npm run sideload` to update)");
+      return;
+    }
+    console.error(`[sideload] Version changed (${markerVersion} \u2192 ${currentVersion}), re-sideloading`);
+  } catch {
+  }
   const wefDir = (0, import_node_path2.join)((0, import_node_os2.homedir)(), "Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef");
   const manifestName = tls ? "manifest-https.xml" : "manifest.xml";
   const src = (0, import_node_path2.resolve)(ADDIN_STATIC_DIR, manifestName);
@@ -35515,6 +35532,7 @@ function autoSideloadManifest(tls) {
     if (!(0, import_node_fs2.existsSync)(src)) return;
     (0, import_node_fs2.mkdirSync)(wefDir, { recursive: true });
     (0, import_node_fs2.copyFileSync)(src, dest);
+    (0, import_node_fs2.writeFileSync)(markerFile, currentVersion);
     console.error("[sideload] Add-in manifest installed for PowerPoint");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
