@@ -10,6 +10,7 @@ echo ""
 WEF_DIR="$HOME/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
 mkdir -p "$WEF_DIR"
 cp "$REPO_DIR/addin/manifest.xml" "$WEF_DIR/"
+node -p "require('$REPO_DIR/package.json').version" > "$REPO_DIR/.sideloaded"
 echo "[add-in] Manifest sideloaded to PowerPoint (HTTP mode)"
 
 # 2. Install skill globally (skip if running as a Claude Code plugin)

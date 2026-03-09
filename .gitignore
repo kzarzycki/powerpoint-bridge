@@ -13,3 +13,4 @@ dist/*.map
 *.tsbuildinfo
 *.mcpb
 logs/
+.sideloaded
