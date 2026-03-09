@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
@@ -102,6 +102,31 @@ const BRIDGE_PORT =
 // ---------------------------------------------------------------------------
 
 function autoSideloadManifest(tls: boolean): void {
+  // Sideloading copies the add-in manifest into PowerPoint's sandboxed container,
+  // which triggers a macOS TCC prompt ("node would like to access data from other
+  // apps"). We use a versioned marker file (.sideloaded) to skip sideloading when
+  // the version hasn't changed, so the prompt only appears on first install or
+  // after an update. Use `npm run sideload` to force re-install.
+  const markerFile = resolve(PROJECT_ROOT, '.sideloaded')
+  const pkgPath = resolve(PROJECT_ROOT, 'package.json')
+
+  let currentVersion = 'unknown'
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+    currentVersion = pkg.version
+  } catch {}
+
+  try {
+    const markerVersion = readFileSync(markerFile, 'utf8').trim()
+    if (markerVersion === currentVersion) {
+      console.error('[sideload] Add-in already installed (use `npm run sideload` to update)')
+      return
+    }
+    console.error(`[sideload] Version changed (${markerVersion} → ${currentVersion}), re-sideloading`)
+  } catch {
+    // marker doesn't exist — first install
+  }
+
   const wefDir = join(homedir(), 'Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef')
   const manifestName = tls ? 'manifest-https.xml' : 'manifest.xml'
   const src = resolve(ADDIN_STATIC_DIR, manifestName)
@@ -110,6 +135,7 @@ function autoSideloadManifest(tls: boolean): void {
     if (!existsSync(src)) return
     mkdirSync(wefDir, { recursive: true })
     copyFileSync(src, dest)
+    writeFileSync(markerFile, currentVersion)
     console.error('[sideload] Add-in manifest installed for PowerPoint')
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
