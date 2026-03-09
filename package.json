@@ -1,6 +1,6 @@
 {
   "name": "powerpoint-bridge",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "MCP server that lets AI assistants manipulate live PowerPoint presentations via Office.js",
   "type": "module",
   "main": "dist/index.js",
@@ -52,6 +52,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check": "biome check . && tsc --noEmit && vitest run",
+    "version": "bash scripts/sync-version.sh",
+    "release": "bash scripts/release.sh",
     "build:mcpb": "bash scripts/build-mcpb.sh",
     "sideload": "mkdir -p ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef && cp addin/manifest.xml ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/manifest.xml",
     "sideload:https": "mkdir -p ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef && cp addin/manifest-https.xml ~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/manifest.xml",

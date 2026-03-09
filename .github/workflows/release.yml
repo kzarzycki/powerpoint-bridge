@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.3.0). Must already exist.'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  release:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build server bundle
+        run: npm run build
+
+      - name: Prepare mcpb staging directory
+        run: |
+          STAGE_DIR="dist/mcpb-stage"
+          rm -rf "$STAGE_DIR"
+          mkdir -p "$STAGE_DIR/server" "$STAGE_DIR/addin/assets"
+
+          cp dist/index.cjs "$STAGE_DIR/server/index.cjs"
+
+          cp addin/index.html addin/app.js addin/style.css "$STAGE_DIR/addin/"
+          cp addin/manifest.xml addin/manifest-https.xml "$STAGE_DIR/addin/"
+          cp addin/assets/*.png "$STAGE_DIR/addin/assets/"
+
+          cp manifest.json "$STAGE_DIR/"
+          cp addin/assets/icon-80.png "$STAGE_DIR/icon.png"
+
+      - name: Pack .mcpb extension
+        run: |
+          cd dist/mcpb-stage
+          npx @anthropic-ai/mcpb pack
+
+      - name: Prepare release artifact
+        id: artifact
+        run: |
+          VERSION=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")
+          MCPB_FILE="powerpoint-bridge-v${VERSION}.mcpb"
+
+          PACKED=$(ls dist/mcpb-stage/*.mcpb 2>/dev/null | head -1)
+          if [ -z "$PACKED" ]; then
+            echo "Error: No .mcpb file found after packing"
+            exit 1
+          fi
+          mv "$PACKED" "$MCPB_FILE"
+
+          echo "mcpb_file=$MCPB_FILE" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            "${{ steps.artifact.outputs.mcpb_file }}" \
+            --title "PowerPoint Bridge ${{ steps.tag.outputs.tag }}" \
+            --generate-notes \
+            --latest
