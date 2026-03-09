@@ -47,6 +47,10 @@ For tool reference, code patterns, and usage — see the **powerpoint-live** ski
 - **Solid fills only** - no gradients, effects, or shadows
 - **Points for positioning** - 1 point = 1/72 inch
 
+## Conventions
+
+- PR titles and commits follow Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
+
 ## Key Technical Decisions
 
 1. **Single Node.js process** for HTTP(S) + WS(S) + MCP (simplicity over microservices)

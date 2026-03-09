@@ -1,0 +1,46 @@
+name: PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions:
+      contents: read
+    steps:
+      - name: Check conventional commit prefix
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+          PATTERN="^(feat|fix|chore|refactor|ci|docs|build|test|perf)(\(.+\))?: .+"
+          if [[ ! "$TITLE" =~ $PATTERN ]]; then
+            echo "::error::PR title must follow Conventional Commits: type: description"
+            echo "  Accepted types: feat, fix, chore, refactor, ci, docs, build, test, perf"
+            echo "  Example: feat: add slide transition support"
+            echo "  Got: $TITLE"
+            exit 1
+          fi
+
+  auto-label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Apply label from title prefix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+          PR=${{ github.event.pull_request.number }}
+          REPO=${{ github.repository }}
+
+          if [[ "$TITLE" =~ ^feat ]]; then
+            gh pr edit "$PR" --repo "$REPO" --add-label "enhancement"
+          elif [[ "$TITLE" =~ ^fix ]]; then
+            gh pr edit "$PR" --repo "$REPO" --add-label "bug"
+          elif [[ "$TITLE" =~ ^(chore|refactor|ci|docs|build|test|perf) ]]; then
+            gh pr edit "$PR" --repo "$REPO" --add-label "internal"
+          fi
