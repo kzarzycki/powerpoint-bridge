@@ -51,6 +51,23 @@ For tool reference, code patterns, and usage — see the **powerpoint-live** ski
 
 - PR titles and commits follow Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
 
+## Development Workflow
+
+### Build
+- **After changing `server/` files**: Run `npm run build` and stage `dist/index.cjs` — it's committed and used by plugin/MCPB installs. The pre-commit hook enforces this.
+- **Quality gate**: Use `npm run check` (runs lint + typecheck + test in one command)
+
+### Branch & PR
+- Create a feature branch: `<type>/<short-description>` (e.g. `fix/tcc-sideload-prompt`, `feat/new-tool`)
+- PR title must follow Conventional Commits — CI enforces this and auto-labels (`feat`→enhancement, `fix`→bug, etc.)
+- Squash merge PRs to keep main history clean
+- Delete feature branch after merge
+
+### Code Quality
+- **TDD (red-green)**: Write failing tests first, then implement to make them pass
+- After implementation, use `/simplify` to review changed code
+- Run `npm run check` before pushing
+
 ## Key Technical Decisions
 
 1. **Single Node.js process** for HTTP(S) + WS(S) + MCP (simplicity over microservices)
