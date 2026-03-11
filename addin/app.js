@@ -97,12 +97,28 @@ function updateStatus(state) {
   el.className = `status ${state}`
 }
 
+/* Command queue — Office.js PowerPoint.run() calls must execute sequentially.
+   Concurrent calls compete for the same COM context and can deadlock. */
+var commandQueue = []
+var commandRunning = false
+
+function processQueue() {
+  if (commandRunning || commandQueue.length === 0) return
+  commandRunning = true
+  var next = commandQueue.shift()
+  next().finally(() => {
+    commandRunning = false
+    processQueue()
+  })
+}
+
 /* Command handler — dispatches actions to execution functions */
 function handleCommand(message) {
   if (message.type !== 'command' || !message.id) return
 
   if (message.action === 'executeCode') {
-    executeCode(message.params.code, message.id)
+    commandQueue.push(() => executeCode(message.params.code, message.id))
+    processQueue()
   } else {
     sendError(message.id, { message: `Unknown action: ${message.action}` })
   }
@@ -115,10 +131,10 @@ function executeCode(code, requestId) {
       message: 'PowerPoint not available — running in standalone mode',
       code: 'NotInOffice',
     })
-    return
+    return Promise.resolve()
   }
 
-  PowerPoint.run((context) => {
+  return PowerPoint.run((context) => {
     var fn = new AsyncFunction('context', 'PowerPoint', code)
     return fn(context, PowerPoint)
   })
