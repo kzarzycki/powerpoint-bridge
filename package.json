@@ -1,6 +1,6 @@
 {
   "name": "powerpoint-bridge",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "MCP server that lets AI assistants manipulate live PowerPoint presentations via Office.js",
   "type": "module",
   "main": "dist/index.js",
@@ -61,6 +61,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "@xmldom/xmldom": "^0.8.11",
+    "jszip": "^3.10.1",
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
