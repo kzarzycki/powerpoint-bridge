@@ -35,6 +35,7 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 | `edit_slide_zip` | Update multiple zip files and reimport (auto-registers Content_Types for charts) | `slideIndex`, `files`, `presentationId?` |
 | `duplicate_slide` | Clone a slide within the same presentation | `slideIndex`, `insertAfter?`, `presentationId?` |
 | `verify_slides` | Check for overlapping, out-of-bounds, empty-text, or tiny shapes | `slideIndex`, `checks?`, `presentationId?` |
+| `edit_slide_chart` | Create chart from structured data (generates all OOXML automatically) | `slideIndex`, `chartType`, `title`, `categories`, `series`, `position?`, `options?`, `presentationId?` |
 | `execute_officejs` | Run arbitrary Office.js code in the live presentation | `code`, `presentationId?` |
 
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
@@ -47,9 +48,29 @@ All positioning values from `get_slide` are in **points** (1 pt = 1/72 inch). St
 2. **Understand**: `get_deck_overview` — visual overview of all slides in one call; or `get_presentation` then `get_slide` for targeted inspection
 3. **See**: `get_slide_image` — visually inspect a specific slide
 4. **Modify**: `execute_officejs` — make changes with Office.js code
-5. **Verify**: `get_slide_image` — confirm visual result
+5. **Verify**: full verification loop (see below)
 
 Always inspect before modifying. Always verify after modifying.
+
+### Verification Loop
+
+After completing work on a slide:
+
+1. **Auto-size first**: set `autoSizeSetting = "AutoSizeShapeToFitText"` on edited text shapes via `execute_officejs` — otherwise `verify_slides` sees stale dimensions
+2. **Structural check**: `verify_slides` — overlap, bounds, empty text, tiny shapes
+3. **Visual check**: spawn a subagent for independent visual review (see below)
+4. **Fix issues** and re-verify until clean
+
+If overlaps/overflow: shorten text, reduce font, reposition body content (not title), or split across slides.
+
+### Visual Review via Subagent
+
+Use the Agent tool to spawn a subagent that reviews the slide screenshot. The subagent has no conversation context, providing an independent review.
+
+Subagent prompt (replace N with the slide index):
+> Call get_slide_image(slideIndex: N) to capture the slide, then review it for: text overflow or truncation, overlapping shapes or text, unreadable text (too small, poor contrast), misalignment or inconsistent spacing, empty or unused space, inconsistent styling (mixed fonts, colors, sizes). Return a JSON array of issues found, each with: severity (error/warning/info), category, description, and suggestion. If no issues found, return [].
+
+Rules: never mention "the reviewer" to user. Speak in first person: "I noticed the title overlaps" not "The reviewer found an overlap." Only use for completed work, not initial inspection.
 
 For `execute_officejs` code patterns, see [code-patterns.md](references/code-patterns.md).
 
@@ -74,10 +95,44 @@ For fine-grained formatting control beyond what Office.js properties expose, use
 Cannot do via Office.js — do not attempt:
 
 - Insert images with precise shape-level control (use `insert_image` tool — positions via Common API, not shape API)
-- Create or edit charts
 - Add animations or transitions
 - Apply gradients, shadows, or effects (solid fills only)
-- Edit slide masters or themes
+
+For charts, use `edit_slide_chart` (declarative) or `edit_slide_zip` (raw OOXML). For slide masters/themes, use `execute_officejs` for backgrounds or `get_local_copy` + python-pptx for full theme editing.
+
+## Content & Design Rules
+
+- Font minimum **14pt** everywhere, preferred body **16pt**
+- Always explicitly set `font.size` — do not rely on defaults
+- Max 3-4 key points per slide with short supporting text
+- Prefer more slides with less content over fewer dense slides
+- Use full slide area — stretch content to fill, don't leave large margins
+- Never use emoji or Unicode symbols as icons — use geometric shapes as icon substitutes
+
+## Gotchas
+
+**XML:**
+- Always escape `&` as `&amp;` in `<a:t>` — #1 cause of missing text
+- OOXML is fully explicit — every omitted attribute is lost. Copy verbatim from `read_slide_text`.
+- No `<!-- -->` comments in code strings — sandbox rejects with `SES_HTML_COMMENT_REJECTED`
+
+**Office.js:**
+- Use `getTextFrameOrNullObject()` — never `.textFrame` directly (tables/images/charts throw)
+- Loaded values are snapshots — don't branch on stale reads after writes (`hasText` stays stale after setting `textRange.text`)
+- No `paragraphs` collection in PowerPoint Office.js
+- `slides.add()` always appends — use `slide.moveTo(index)` to reposition
+- Always use last master: `masters.items[masters.items.length - 1]` — earlier may be stale
+- No `#` prefix for background colors: `{ color: "1A1A1E" }` not `"#1A1A1E"`
+- Don't delete placeholders after writing text — `hasText` is stale, you'll delete what you just wrote
+- Shape IDs are stable and locale-independent. Shape names change with Office UI language. Always use ID.
+
+**Charts:**
+- Always register in `[Content_Types].xml`, include `<c:style val="2"/>`, don't hardcode series colors
+- Stacked bars need `<c:overlap val="100"/>`, category axis `majorTickMark val="none"`
+
+**Tables:**
+- Height is auto-calculated — `shape.height` and OOXML `<a:ext cy>` are overridden
+- Fix overflow via table API only: `cell.font.size` + `row.height`
 
 ## Working with python-pptx
 

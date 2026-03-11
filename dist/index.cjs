@@ -3297,8 +3297,8 @@ var require_utils = __commonJS({
       }
       return output.join("");
     }
-    function normalizeComponentEncoding(component, esc2) {
-      const func = esc2 !== true ? escape : unescape;
+    function normalizeComponentEncoding(component, esc3) {
+      const func = esc3 !== true ? escape : unescape;
       if (component.scheme !== void 0) {
         component.scheme = func(component.scheme);
       }
@@ -49157,6 +49157,192 @@ var import_node_fs = require("node:fs");
 var import_node_os = require("node:os");
 var import_node_path = require("node:path");
 
+// server/chart-builder.ts
+var C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart";
+var A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+var R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+var P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main";
+function esc2(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+var PT_TO_EMU = 12700;
+function pointsToEmu(pt) {
+  return Math.round(pt * PT_TO_EMU);
+}
+var DEFAULT_POSITION = {
+  left: 140,
+  // ~2" from left edge
+  top: 110,
+  // ~1.5" from top
+  width: 680,
+  // ~9.4"
+  height: 370
+  // ~5.1"
+};
+function buildChartXml(chartType, title, categories, series, options) {
+  const opts = {
+    stacked: false,
+    showDataLabels: true,
+    showLegend: true,
+    legendPosition: "t",
+    ...options
+  };
+  const titleXml = buildTitle(title);
+  const plotArea = buildPlotArea(chartType, categories, series, opts);
+  const legendXml = opts.showLegend ? `<c:legend><c:legendPos val="${opts.legendPosition}"/><c:overlay val="0"/><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:legend>` : "";
+  return [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    `<c:chartSpace xmlns:c="${C_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}">`,
+    '<c:style val="2"/>',
+    "<c:chart>",
+    titleXml,
+    '<c:autoTitleDeleted val="0"/>',
+    plotArea,
+    legendXml,
+    '<c:plotVisOnly val="1"/>',
+    "</c:chart>",
+    "</c:chartSpace>"
+  ].join("");
+}
+function buildTitle(title) {
+  return [
+    "<c:title>",
+    "<c:tx><c:rich>",
+    "<a:bodyPr/>",
+    "<a:lstStyle/>",
+    "<a:p>",
+    '<a:pPr><a:defRPr sz="1600" b="1"/></a:pPr>',
+    `<a:r><a:rPr lang="en-US" sz="1600" b="1"/><a:t>${esc2(title)}</a:t></a:r>`,
+    "</a:p>",
+    "</c:rich></c:tx>",
+    '<c:overlay val="0"/>',
+    "</c:title>"
+  ].join("");
+}
+function buildPlotArea(chartType, categories, series, opts) {
+  const chartElement = buildChartTypeElement(chartType, categories, series, opts);
+  const needsAxes = chartType !== "pie" && chartType !== "doughnut";
+  const axes = needsAxes ? [buildCategoryAxis(chartType === "bar" ? "l" : "b"), buildValueAxis(chartType === "bar" ? "b" : "l")].join("") : "";
+  return `<c:plotArea><c:layout/>${chartElement}${axes}</c:plotArea>`;
+}
+function buildChartTypeElement(chartType, categories, series, opts) {
+  const seriesXml = series.map((s, i) => buildSeries(i, s, categories, chartType, opts)).join("");
+  switch (chartType) {
+    case "column":
+    case "bar": {
+      const dir = chartType === "bar" ? "bar" : "col";
+      const grouping = opts.stacked ? "stacked" : "clustered";
+      const overlap = opts.stacked ? '<c:overlap val="100"/>' : "";
+      return `<c:barChart><c:barDir val="${dir}"/><c:grouping val="${grouping}"/>${overlap}${seriesXml}<c:axId val="1"/><c:axId val="2"/></c:barChart>`;
+    }
+    case "line": {
+      const grouping = opts.stacked ? "stacked" : "standard";
+      return `<c:lineChart><c:grouping val="${grouping}"/>${seriesXml}<c:axId val="1"/><c:axId val="2"/></c:lineChart>`;
+    }
+    case "area": {
+      const grouping = opts.stacked ? "stacked" : "standard";
+      return `<c:areaChart><c:grouping val="${grouping}"/>${seriesXml}<c:axId val="1"/><c:axId val="2"/></c:areaChart>`;
+    }
+    case "pie":
+      return `<c:pieChart>${seriesXml}</c:pieChart>`;
+    case "doughnut":
+      return `<c:doughnutChart>${seriesXml}<c:holeSize val="50"/></c:doughnutChart>`;
+  }
+}
+function buildSeries(index, series, categories, chartType, opts) {
+  const isPieOrDoughnut = chartType === "pie" || chartType === "doughnut";
+  const catXml = buildCategoryData(categories);
+  const valXml = buildValueData(series.values);
+  const dLbls = buildDataLabels(opts.showDataLabels, isPieOrDoughnut);
+  return [
+    "<c:ser>",
+    `<c:idx val="${index}"/>`,
+    `<c:order val="${index}"/>`,
+    `<c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${esc2(series.name)}</c:v></c:pt></c:strCache></c:strRef></c:tx>`,
+    dLbls,
+    catXml,
+    valXml,
+    "</c:ser>"
+  ].join("");
+}
+function buildCategoryData(categories) {
+  const points = categories.map((cat, i) => `<c:pt idx="${i}"><c:v>${esc2(cat)}</c:v></c:pt>`).join("");
+  return `<c:cat><c:strLit><c:ptCount val="${categories.length}"/>${points}</c:strLit></c:cat>`;
+}
+function buildValueData(values) {
+  const points = values.map((val, i) => `<c:pt idx="${i}"><c:v>${val}</c:v></c:pt>`).join("");
+  return `<c:val><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val="${values.length}"/>${points}</c:numLit></c:val>`;
+}
+function buildDataLabels(show, isPieOrDoughnut) {
+  if (!show) {
+    return '<c:dLbls><c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/></c:dLbls>';
+  }
+  if (isPieOrDoughnut) {
+    return '<c:dLbls><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr><c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="1"/><c:showSerName val="0"/><c:showPercent val="1"/></c:dLbls>';
+  }
+  return '<c:dLbls><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr><c:showLegendKey val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/></c:dLbls>';
+}
+function buildCategoryAxis(position) {
+  return [
+    "<c:catAx>",
+    '<c:axId val="1"/>',
+    '<c:scaling><c:orientation val="minMax"/></c:scaling>',
+    '<c:delete val="0"/>',
+    `<c:axPos val="${position}"/>`,
+    '<c:majorTickMark val="none"/>',
+    '<c:minorTickMark val="none"/>',
+    '<c:tickLblPos val="nextTo"/>',
+    '<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr>',
+    '<c:crossAx val="2"/>',
+    "</c:catAx>"
+  ].join("");
+}
+function buildValueAxis(position) {
+  return [
+    "<c:valAx>",
+    '<c:axId val="2"/>',
+    '<c:scaling><c:orientation val="minMax"/></c:scaling>',
+    '<c:delete val="0"/>',
+    `<c:axPos val="${position}"/>`,
+    '<c:majorTickMark val="out"/>',
+    '<c:minorTickMark val="none"/>',
+    '<c:tickLblPos val="nextTo"/>',
+    '<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1400"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr>',
+    '<c:crossAx val="1"/>',
+    "</c:valAx>"
+  ].join("");
+}
+function buildGraphicFrame(rId, position, chartName, shapeId) {
+  return [
+    "<p:graphicFrame",
+    ` xmlns:p="${P_NS}"`,
+    ` xmlns:a="${A_NS}"`,
+    ` xmlns:r="${R_NS}">`,
+    "<p:nvGraphicFramePr>",
+    `<p:cNvPr id="${shapeId}" name="${esc2(chartName)}"/>`,
+    '<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr>',
+    "<p:nvPr/>",
+    "</p:nvGraphicFramePr>",
+    `<p:xfrm><a:off x="${position.x}" y="${position.y}"/><a:ext cx="${position.cx}" cy="${position.cy}"/></p:xfrm>`,
+    `<a:graphic><a:graphicData uri="${C_NS}">`,
+    `<c:chart xmlns:c="${C_NS}" r:id="${rId}"/>`,
+    "</a:graphicData></a:graphic>",
+    "</p:graphicFrame>"
+  ].join("");
+}
+function buildChartRelationship(rId, chartPath) {
+  return `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="${chartPath}"/>`;
+}
+function resolveChartPosition(pos) {
+  const p = { ...DEFAULT_POSITION, ...pos };
+  return {
+    x: pointsToEmu(p.left),
+    y: pointsToEmu(p.top),
+    cx: pointsToEmu(p.width),
+    cy: pointsToEmu(p.height)
+  };
+}
+
 // server/xml-helpers.ts
 var import_xmldom = __toESM(require_lib(), 1);
 var import_jszip = __toESM(require_lib4(), 1);
@@ -50211,6 +50397,101 @@ ${textParts.join("\n")}` : "\n(no text content)";
         }
         const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
         const text = JSON.stringify({ success: true, filesUpdated: Object.keys(files).length, newFiles: newPaths }, null, 2) + (warning ?? "");
+        return { content: [{ type: "text", text }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+  server.tool(
+    "edit_slide_chart",
+    "Create a chart on a slide from structured data. Generates all OOXML automatically (chart XML, rels, graphic frame, Content_Types). Supports column, bar, line, pie, doughnut, and area charts with multiple series.",
+    {
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
+      chartType: external_exports3.enum(["column", "bar", "line", "pie", "doughnut", "area"]).describe("Chart type"),
+      title: external_exports3.string().describe("Chart title"),
+      categories: external_exports3.array(external_exports3.string()).describe("Category labels (x-axis or pie slices)"),
+      series: external_exports3.array(
+        external_exports3.object({
+          name: external_exports3.string().describe("Series name"),
+          values: external_exports3.array(external_exports3.number()).describe("Data values (one per category)")
+        })
+      ).min(1).describe("Data series"),
+      position: external_exports3.object({
+        left: external_exports3.number().optional().describe("Left position in points"),
+        top: external_exports3.number().optional().describe("Top position in points"),
+        width: external_exports3.number().optional().describe("Width in points"),
+        height: external_exports3.number().optional().describe("Height in points")
+      }).optional().describe("Chart position in points. Defaults to centered on slide."),
+      options: external_exports3.object({
+        stacked: external_exports3.boolean().optional().describe("Use stacked grouping (bar/column/line/area)"),
+        showDataLabels: external_exports3.boolean().optional().describe("Show data labels (default true)"),
+        showLegend: external_exports3.boolean().optional().describe("Show legend (default true)"),
+        legendPosition: external_exports3.enum(["t", "b", "l", "r"]).optional().describe("Legend position: t=top, b=bottom, l=left, r=right")
+      }).optional().describe("Chart options"),
+      presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
+    },
+    async ({ slideIndex, chartType, title, categories, series, position, options, presentationId }) => {
+      try {
+        const target = pool2.resolveTarget(presentationId);
+        const exported = await exportSlide(pool2, slideIndex, target.ws);
+        const { zip } = await extractZipFiles(exported.base64);
+        const existingPaths = listZipPaths(zip);
+        const chartPaths = existingPaths.filter((p) => p.startsWith("ppt/charts/chart") && p.endsWith(".xml"));
+        const chartNums = chartPaths.map((p) => {
+          const m = p.match(/chart(\d+)\.xml$/);
+          return m ? Number(m[1]) : 0;
+        });
+        const nextChartNum = chartNums.length > 0 ? Math.max(...chartNums) + 1 : 1;
+        const chartFileName = `chart${nextChartNum}.xml`;
+        const chartZipPath = `ppt/charts/${chartFileName}`;
+        const relsPath = "ppt/slides/_rels/slide1.xml.rels";
+        const relsContent = zip.file(relsPath) ? await zip.file(relsPath).async("string") : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+        const rIdMatches = [...relsContent.matchAll(/Id="rId(\d+)"/g)];
+        const rIdNums = rIdMatches.map((m) => Number(m[1]));
+        const nextRIdNum = rIdNums.length > 0 ? Math.max(...rIdNums) + 1 : 1;
+        const rId = `rId${nextRIdNum}`;
+        const chartXml = buildChartXml(chartType, title, categories, series, options);
+        const slideXmlPath = "ppt/slides/slide1.xml";
+        const slideXml = await zip.file(slideXmlPath).async("string");
+        const emuPos = resolveChartPosition(position);
+        const shapeIdMatches = [...slideXml.matchAll(/id="(\d+)"/g)];
+        const shapeIds = shapeIdMatches.map((m) => Number(m[1]));
+        const nextShapeId = shapeIds.length > 0 ? Math.max(...shapeIds) + 1 : 100;
+        const chartName = `Chart ${nextChartNum}`;
+        const graphicFrame = buildGraphicFrame(rId, emuPos, chartName, nextShapeId);
+        const modifiedSlideXml = slideXml.replace("</p:spTree>", `${graphicFrame}</p:spTree>`);
+        const relEntry = buildChartRelationship(rId, `../charts/${chartFileName}`);
+        const modifiedRels = relsContent.replace("</Relationships>", `${relEntry}</Relationships>`);
+        const files = {
+          [slideXmlPath]: modifiedSlideXml,
+          [chartZipPath]: chartXml,
+          [relsPath]: modifiedRels
+        };
+        const newPaths = Object.keys(files).filter((p) => !new Set(existingPaths).has(p));
+        const modifiedBase64 = await updateZipFiles(zip, files);
+        if (newPaths.length > 0) {
+          const { zip: updatedZip } = await extractZipFiles(modifiedBase64);
+          await autoRegisterContentTypes(updatedZip, newPaths);
+          const finalBase64 = await updatedZip.generateAsync({ type: "base64" });
+          await reimportSlide(pool2, finalBase64, exported.slideId, exported.prevSlideId, target.ws);
+        } else {
+          await reimportSlide(pool2, modifiedBase64, exported.slideId, exported.prevSlideId, target.ws);
+        }
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
+        const text = JSON.stringify(
+          {
+            success: true,
+            chartType,
+            title,
+            seriesCount: series.length,
+            categoryCount: categories.length,
+            chartFile: chartZipPath
+          },
+          null,
+          2
+        ) + (warning ?? "");
         return { content: [{ type: "text", text }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

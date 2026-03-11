@@ -81,13 +81,14 @@ describe('MCP Tools', () => {
     pool = new ConnectionPool(100)
   })
 
-  it('lists all 17 tools', async () => {
+  it('lists all 18 tools', async () => {
     const { client } = await setupMcpClient(pool)
     const result = await client.listTools()
     const names = result.tools.map((t) => t.name).sort()
     expect(names).toEqual([
       'copy_slides',
       'duplicate_slide',
+      'edit_slide_chart',
       'edit_slide_text',
       'edit_slide_xml',
       'edit_slide_zip',
@@ -1682,6 +1683,190 @@ describe('MCP Tools', () => {
 
       pool.handleResponse(reimportJson.id, 'response', { success: true })
       await toolPromise
+    })
+  })
+
+  describe('edit_slide_chart', () => {
+    it('creates a column chart with all required OOXML parts', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      // Prepare a zip with slide XML, rels, and Content_Types
+      const zip = new JSZip()
+      zip.file('ppt/slides/slide1.xml', SAMPLE_SLIDE_XML)
+      zip.file(
+        'ppt/slides/_rels/slide1.xml.rels',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>',
+      )
+      zip.file(
+        '[Content_Types].xml',
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>',
+      )
+      const base64 = await zip.generateAsync({ type: 'base64' })
+
+      const toolPromise = client.callTool({
+        name: 'edit_slide_chart',
+        arguments: {
+          slideIndex: 0,
+          chartType: 'column',
+          title: 'Revenue by Quarter',
+          categories: ['Q1', 'Q2', 'Q3'],
+          series: [{ name: 'Revenue', values: [100, 150, 120] }],
+        },
+      })
+
+      // exportSlide
+      await new Promise((r) => setTimeout(r, 10))
+      const exportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      pool.handleResponse(exportJson.id, 'response', { base64, slideId: 'slide-0', prevSlideId: null })
+
+      // reimportSlide — verify the reimported zip has chart, rels, graphic frame
+      await new Promise((r) => setTimeout(r, 10))
+      const reimportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[1][0])
+      const reimportCode = reimportJson.params.code as string
+      const b64Match = reimportCode.match(/insertSlidesFromBase64\("([^"]+)"/)
+      expect(b64Match).not.toBeNull()
+
+      const reimportedZip = new JSZip()
+      await reimportedZip.loadAsync(b64Match![1], { base64: true })
+
+      // Verify chart XML was created
+      const chartFile = reimportedZip.file('ppt/charts/chart1.xml')
+      expect(chartFile).not.toBeNull()
+      const chartXml = await chartFile!.async('string')
+      expect(chartXml).toContain('<c:chartSpace')
+      expect(chartXml).toContain('<c:style val="2"/>')
+      expect(chartXml).toContain('<c:barChart>')
+      expect(chartXml).toContain('<c:barDir val="col"/>')
+      expect(chartXml).toContain('Revenue by Quarter')
+      expect(chartXml).toContain('<c:dLbls>')
+
+      // Verify rels was updated with chart relationship
+      const rels = await reimportedZip.file('ppt/slides/_rels/slide1.xml.rels')!.async('string')
+      expect(rels).toContain('rId2')
+      expect(rels).toContain('../charts/chart1.xml')
+      expect(rels).toContain('relationships/chart')
+
+      // Verify slide XML has graphic frame
+      const slideXml = await reimportedZip.file('ppt/slides/slide1.xml')!.async('string')
+      expect(slideXml).toContain('<p:graphicFrame')
+      expect(slideXml).toContain('r:id="rId2"')
+
+      // Verify Content_Types was auto-registered
+      const ct = await reimportedZip.file('[Content_Types].xml')!.async('string')
+      expect(ct).toContain('chart1.xml')
+      expect(ct).toContain('drawingml.chart+xml')
+
+      pool.handleResponse(reimportJson.id, 'response', { success: true })
+
+      const result = await toolPromise
+      const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
+      expect(parsed.success).toBe(true)
+      expect(parsed.chartType).toBe('column')
+      expect(parsed.chartFile).toBe('ppt/charts/chart1.xml')
+    })
+
+    it('creates a pie chart without axes', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      const zip = new JSZip()
+      zip.file('ppt/slides/slide1.xml', SAMPLE_SLIDE_XML)
+      zip.file(
+        'ppt/slides/_rels/slide1.xml.rels',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>',
+      )
+      zip.file(
+        '[Content_Types].xml',
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>',
+      )
+      const base64 = await zip.generateAsync({ type: 'base64' })
+
+      const toolPromise = client.callTool({
+        name: 'edit_slide_chart',
+        arguments: {
+          slideIndex: 0,
+          chartType: 'pie',
+          title: 'Market Share',
+          categories: ['A', 'B', 'C'],
+          series: [{ name: 'Share', values: [40, 35, 25] }],
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+      const exportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      pool.handleResponse(exportJson.id, 'response', { base64, slideId: 'slide-0', prevSlideId: null })
+
+      await new Promise((r) => setTimeout(r, 10))
+      const reimportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[1][0])
+      const reimportCode = reimportJson.params.code as string
+      const b64Match = reimportCode.match(/insertSlidesFromBase64\("([^"]+)"/)
+
+      const reimportedZip = new JSZip()
+      await reimportedZip.loadAsync(b64Match![1], { base64: true })
+      const chartXml = await reimportedZip.file('ppt/charts/chart1.xml')!.async('string')
+      expect(chartXml).toContain('<c:pieChart>')
+      expect(chartXml).not.toContain('<c:catAx>')
+      expect(chartXml).toContain('<c:showPercent val="1"/>')
+
+      pool.handleResponse(reimportJson.id, 'response', { success: true })
+      await toolPromise
+    })
+
+    it('increments chart number when charts already exist', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      const zip = new JSZip()
+      zip.file('ppt/slides/slide1.xml', SAMPLE_SLIDE_XML)
+      zip.file('ppt/charts/chart1.xml', '<c:chartSpace/>') // existing chart
+      zip.file(
+        'ppt/slides/_rels/slide1.xml.rels',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="x" Target="y"/></Relationships>',
+      )
+      zip.file(
+        '[Content_Types].xml',
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>',
+      )
+      const base64 = await zip.generateAsync({ type: 'base64' })
+
+      const toolPromise = client.callTool({
+        name: 'edit_slide_chart',
+        arguments: {
+          slideIndex: 0,
+          chartType: 'line',
+          title: 'Trends',
+          categories: ['Jan', 'Feb'],
+          series: [{ name: 'Sales', values: [10, 20] }],
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+      const exportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      pool.handleResponse(exportJson.id, 'response', { base64, slideId: 'slide-0', prevSlideId: null })
+
+      await new Promise((r) => setTimeout(r, 10))
+      const reimportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[1][0])
+      const reimportCode = reimportJson.params.code as string
+      const b64Match = reimportCode.match(/insertSlidesFromBase64\("([^"]+)"/)
+
+      const reimportedZip = new JSZip()
+      await reimportedZip.loadAsync(b64Match![1], { base64: true })
+
+      // chart2.xml should be created (chart1 already exists)
+      expect(reimportedZip.file('ppt/charts/chart2.xml')).not.toBeNull()
+      // Rels should use rId2 (rId1 already exists)
+      const rels = await reimportedZip.file('ppt/slides/_rels/slide1.xml.rels')!.async('string')
+      expect(rels).toContain('rId2')
+      expect(rels).toContain('../charts/chart2.xml')
+
+      pool.handleResponse(reimportJson.id, 'response', { success: true })
+      const result = await toolPromise
+      const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
+      expect(parsed.chartFile).toBe('ppt/charts/chart2.xml')
     })
   })
 })
