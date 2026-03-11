@@ -27,6 +27,14 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 | `copy_slides` | Copy slides between two open presentations (data stays server-side) | `sourceSlideIndex`, `sourcePresentationId`, `destinationPresentationId`, `formatting?`, `targetSlideId?` |
 | `insert_image` | Insert image from file path, URL, or base64 data (data stays server-side for file/url) | `source`, `sourceType` (`file`/`url`/`base64`), `slideIndex?`, `left?`, `top?`, `width?`, `height?`, `presentationId?` |
 | `get_local_copy` | Get a local .pptx file path (passthrough for local files, exports cloud files to temp) | `presentationId?` |
+| `read_slide_text` | Read raw OOXML `<a:p>` paragraphs from a shape (preserves formatting) | `slideIndex`, `shapeId`, `presentationId?` |
+| `edit_slide_text` | Replace paragraph content with raw OOXML (preserves bodyPr/lstStyle) | `slideIndex`, `shapeId`, `xml`, `presentationId?` |
+| `read_slide_xml` | Read full slide OOXML or a specific shape's XML | `slideIndex`, `shapeId?`, `presentationId?` |
+| `edit_slide_xml` | Replace full slide XML or a specific shape's XML | `slideIndex`, `xml`, `shapeId?`, `presentationId?` |
+| `read_slide_zip` | Read multiple files from exported slide zip (slide XML, rels, charts) | `slideIndex`, `paths?`, `presentationId?` |
+| `edit_slide_zip` | Update multiple zip files and reimport (auto-registers Content_Types for charts) | `slideIndex`, `files`, `presentationId?` |
+| `duplicate_slide` | Clone a slide within the same presentation | `slideIndex`, `insertAfter?`, `presentationId?` |
+| `verify_slides` | Check for overlapping, out-of-bounds, empty-text, or tiny shapes | `slideIndex`, `checks?`, `presentationId?` |
 | `execute_officejs` | Run arbitrary Office.js code in the live presentation | `code`, `presentationId?` |
 
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
@@ -44,6 +52,22 @@ All positioning values from `get_slide` are in **points** (1 pt = 1/72 inch). St
 Always inspect before modifying. Always verify after modifying.
 
 For `execute_officejs` code patterns, see [code-patterns.md](references/code-patterns.md).
+
+## OOXML Editing Workflow
+
+**Prerequisite**: Load the `/pptx` skill for OOXML structure knowledge (namespaces, element anatomy, formatting rules).
+
+For fine-grained formatting control beyond what Office.js properties expose, use the OOXML tools to read/modify raw slide XML. See [ooxml-reference.md](references/ooxml-reference.md) for detailed tool workflows, batching strategies, unit conversion, and pipeline gotchas.
+
+1. **Discover**: `get_slide(slideIndex)` → find shape IDs
+2. **Read**: `read_slide_text` or `read_slide_xml` — get current XML
+3. **Modify**: Edit the XML (use `/pptx` skill knowledge)
+4. **Write**: `edit_slide_text` or `edit_slide_xml` — apply changes
+5. **Verify**: `get_slide_image` — confirm visual result
+
+- `read_slide_text` / `edit_slide_text` — shape-level paragraph editing (preserves `<a:bodyPr>` and `<a:lstStyle>`)
+- `read_slide_xml` / `edit_slide_xml` — full slide or shape-level XML editing (full control)
+- For batch edits (2+ shapes), use full-slide `read/edit_slide_xml` to avoid multiple reimports
 
 ## Hard Limitations
 

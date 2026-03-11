@@ -4,6 +4,22 @@ import { join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { ConnectionPool } from './bridge.ts'
+import {
+  autoRegisterContentTypes,
+  exportSlide,
+  extractParagraphs,
+  extractSlideXmlFromZip,
+  extractZipFiles,
+  findShapeById,
+  listZipPaths,
+  parseSlideXml,
+  reimportSlide,
+  replaceParagraphs,
+  replaceShape,
+  serializeXml,
+  updateSlideXmlInZip,
+  updateZipFiles,
+} from './xml-helpers.ts'
 
 // ---------------------------------------------------------------------------
 // Local copy cache: presentationId → { localPath, revision }
@@ -709,6 +725,460 @@ export function registerTools(
             },
           ],
         }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: read_slide_text ---
+  server.tool(
+    'read_slide_text',
+    "Read raw OOXML <a:p> paragraphs from a shape's text body. Returns the paragraph XML as a string — preserves all formatting (bold, colors, bullets, etc.) that textRange.text strips. Use with the /pptx skill's OOXML knowledge to understand and modify the XML.",
+    {
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index from get_presentation results'),
+      shapeId: z.string().describe('Shape ID from get_slide results (e.g. "5")'),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideIndex, shapeId, presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+        const exported = await exportSlide(pool, slideIndex, target.ws)
+        const { xmlString } = await extractSlideXmlFromZip(exported.base64)
+        const doc = parseSlideXml(xmlString)
+        const shape = findShapeById(doc, shapeId)
+        if (!shape) {
+          throw new Error(`Shape with ID "${shapeId}" not found on slide ${slideIndex}`)
+        }
+        const paragraphXml = extractParagraphs(shape)
+        return { content: [{ type: 'text' as const, text: paragraphXml }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: edit_slide_text ---
+  server.tool(
+    'edit_slide_text',
+    "Replace paragraph content of a shape with raw OOXML <a:p> XML. Preserves <a:bodyPr> and <a:lstStyle>. Use read_slide_text first to get the current XML, modify it (using /pptx skill knowledge), then write it back. The slide is exported, modified server-side, and reimported — data never enters Claude's context.",
+    {
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index'),
+      shapeId: z.string().describe('Shape ID from get_slide results'),
+      xml: z.string().describe('The <a:p> paragraph XML to replace the current text body content with'),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideIndex, shapeId, xml, presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+        const exported = await exportSlide(pool, slideIndex, target.ws)
+        const { zip, xmlString } = await extractSlideXmlFromZip(exported.base64)
+        const doc = parseSlideXml(xmlString)
+        const shape = findShapeById(doc, shapeId)
+        if (!shape) {
+          throw new Error(`Shape with ID "${shapeId}" not found on slide ${slideIndex}`)
+        }
+        replaceParagraphs(doc, shape, xml)
+        const modifiedBase64 = await updateSlideXmlInZip(zip, serializeXml(doc))
+        await reimportSlide(pool, modifiedBase64, exported.slideId, exported.prevSlideId, target.ws)
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
+        const text = JSON.stringify({ success: true }, null, 2) + (warning ?? '')
+        return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: read_slide_xml ---
+  server.tool(
+    'read_slide_xml',
+    "Read the full raw OOXML of a slide, or filter to a specific shape. Returns the slide's ppt/slides/slide1.xml content. Use with the /pptx skill's OOXML knowledge to understand the XML structure.",
+    {
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index from get_presentation results'),
+      shapeId: z
+        .string()
+        .optional()
+        .describe("Optional shape ID to filter to. If provided, returns only that shape's <p:sp> element."),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideIndex, shapeId, presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+        const exported = await exportSlide(pool, slideIndex, target.ws)
+        const { xmlString } = await extractSlideXmlFromZip(exported.base64)
+
+        if (shapeId) {
+          const doc = parseSlideXml(xmlString)
+          const shape = findShapeById(doc, shapeId)
+          if (!shape) {
+            throw new Error(`Shape with ID "${shapeId}" not found on slide ${slideIndex}`)
+          }
+          return { content: [{ type: 'text' as const, text: serializeXml(shape) }] }
+        }
+
+        return { content: [{ type: 'text' as const, text: xmlString }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: edit_slide_xml ---
+  server.tool(
+    'edit_slide_xml',
+    "Replace the full slide XML or a specific shape's XML and reimport. Use read_slide_xml first to get the current XML, modify it, then write it back. The slide is exported, modified server-side, and reimported — data never enters Claude's context.",
+    {
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index'),
+      xml: z
+        .string()
+        .describe("Modified XML — full slide XML or a single shape's <p:sp> element (when shapeId is provided)"),
+      shapeId: z
+        .string()
+        .optional()
+        .describe(
+          "Optional shape ID. If provided, replaces only that shape's <p:sp> element instead of the full slide XML.",
+        ),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideIndex, xml, shapeId, presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+        const exported = await exportSlide(pool, slideIndex, target.ws)
+        const { zip, xmlString } = await extractSlideXmlFromZip(exported.base64)
+
+        let finalXml: string
+        if (shapeId) {
+          const doc = parseSlideXml(xmlString)
+          const shape = findShapeById(doc, shapeId)
+          if (!shape) {
+            throw new Error(`Shape with ID "${shapeId}" not found on slide ${slideIndex}`)
+          }
+          replaceShape(doc, shape, xml)
+          finalXml = serializeXml(doc)
+        } else {
+          finalXml = xml
+        }
+
+        const modifiedBase64 = await updateSlideXmlInZip(zip, finalXml)
+        await reimportSlide(pool, modifiedBase64, exported.slideId, exported.prevSlideId, target.ws)
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
+        const text = JSON.stringify({ success: true }, null, 2) + (warning ?? '')
+        return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: duplicate_slide ---
+  server.tool(
+    'duplicate_slide',
+    'Duplicate a slide within the same presentation. Exports the slide and reimports it at the specified position. Data stays server-side.',
+    {
+      slideIndex: z.number().int().min(0).describe('Zero-based index of the slide to duplicate'),
+      insertAfter: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe(
+          'Zero-based slide index to insert the duplicate after. Default: same as slideIndex (duplicate appears right after the source).',
+        ),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideIndex, insertAfter, presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+        const insertPos = insertAfter ?? slideIndex
+
+        const code = `
+          var slides = context.presentation.slides;
+          slides.load("items");
+          await context.sync();
+          if (${slideIndex} >= slides.items.length) {
+            throw new Error("Slide index " + ${slideIndex} + " out of range (presentation has " + slides.items.length + " slides)");
+          }
+          if (${insertPos} >= slides.items.length) {
+            throw new Error("insertAfter index " + ${insertPos} + " out of range (presentation has " + slides.items.length + " slides)");
+          }
+          var slide = slides.items[${slideIndex}];
+          var result = slide.exportAsBase64();
+          await context.sync();
+          var targetId = slides.items[${insertPos}].id;
+          context.presentation.insertSlidesFromBase64(result.value, {
+            formatting: "KeepSourceFormatting",
+            targetSlideId: targetId
+          });
+          await context.sync();
+          slides.load("items");
+          await context.sync();
+          return { duplicatedSlideIndex: ${slideIndex}, insertedAfter: ${insertPos}, slideCount: slides.items.length };
+        `
+        const result = await pool.sendCommand('executeCode', { code }, target.ws)
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
+        const text = JSON.stringify(result, null, 2) + (warning ?? '')
+        return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: verify_slides ---
+  server.tool(
+    'verify_slides',
+    'Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, and tiny shapes. Returns a list of issues found. Uses the same shape data as get_slide — no OOXML needed.',
+    {
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index'),
+      checks: z
+        .array(z.enum(['overlap', 'bounds', 'empty_text', 'tiny_shapes']))
+        .optional()
+        .describe('Checks to run. Default: all four checks.'),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideIndex, checks, presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+        const enabledChecks = checks ?? ['overlap', 'bounds', 'empty_text', 'tiny_shapes']
+
+        // Reuse get_slide's shape-loading logic
+        const code = `
+          var slides = context.presentation.slides;
+          slides.load("items");
+          await context.sync();
+          if (${slideIndex} >= slides.items.length) {
+            throw new Error("Slide index " + ${slideIndex} + " out of range (presentation has " + slides.items.length + " slides)");
+          }
+          var slide = slides.items[${slideIndex}];
+          slide.shapes.load("items");
+          await context.sync();
+          var shapes = [];
+          for (var i = 0; i < slide.shapes.items.length; i++) {
+            var s = slide.shapes.items[i];
+            var info = {
+              name: s.name,
+              id: s.id,
+              left: s.left,
+              top: s.top,
+              width: s.width,
+              height: s.height
+            };
+            try {
+              s.textFrame.load("textRange");
+              await context.sync();
+              info.text = s.textFrame.textRange.text;
+            } catch (e) {}
+            shapes.push(info);
+          }
+          // Also get slide dimensions
+          var p = context.presentation;
+          p.load("slideWidth,slideHeight");
+          await context.sync();
+          return { shapes: shapes, slideWidth: p.slideWidth, slideHeight: p.slideHeight };
+        `
+        const slideData = (await pool.sendCommand('executeCode', { code }, target.ws)) as {
+          shapes: Array<{
+            name: string
+            id: string
+            left: number
+            top: number
+            width: number
+            height: number
+            text?: string
+          }>
+          slideWidth: number
+          slideHeight: number
+        }
+
+        const issues: Array<{
+          check: string
+          severity: 'warning' | 'error'
+          shapes: string[]
+          message: string
+        }> = []
+
+        const { shapes, slideWidth, slideHeight } = slideData
+
+        // Overlap check: AABB collision
+        if (enabledChecks.includes('overlap')) {
+          for (let i = 0; i < shapes.length; i++) {
+            for (let j = i + 1; j < shapes.length; j++) {
+              const a = shapes[i]!
+              const b = shapes[j]!
+              if (
+                a.left < b.left + b.width &&
+                a.left + a.width > b.left &&
+                a.top < b.top + b.height &&
+                a.top + a.height > b.top
+              ) {
+                issues.push({
+                  check: 'overlap',
+                  severity: 'warning',
+                  shapes: [a.name, b.name],
+                  message: `"${a.name}" and "${b.name}" overlap`,
+                })
+              }
+            }
+          }
+        }
+
+        // Bounds check: shape extends beyond slide
+        if (enabledChecks.includes('bounds')) {
+          for (const s of shapes) {
+            const outOfBounds: string[] = []
+            if (s.left < 0) outOfBounds.push('left of slide')
+            if (s.top < 0) outOfBounds.push('above slide')
+            if (s.left + s.width > slideWidth) outOfBounds.push('right of slide')
+            if (s.top + s.height > slideHeight) outOfBounds.push('below slide')
+            if (outOfBounds.length > 0) {
+              issues.push({
+                check: 'bounds',
+                severity: 'warning',
+                shapes: [s.name],
+                message: `"${s.name}" extends ${outOfBounds.join(', ')}`,
+              })
+            }
+          }
+        }
+
+        // Empty text check
+        if (enabledChecks.includes('empty_text')) {
+          for (const s of shapes) {
+            if (s.text !== undefined && s.text.trim() === '') {
+              issues.push({
+                check: 'empty_text',
+                severity: 'warning',
+                shapes: [s.name],
+                message: `"${s.name}" has an empty text frame`,
+              })
+            }
+          }
+        }
+
+        // Tiny shapes check
+        if (enabledChecks.includes('tiny_shapes')) {
+          for (const s of shapes) {
+            if (s.width < 10 || s.height < 10) {
+              issues.push({
+                check: 'tiny_shapes',
+                severity: 'warning',
+                shapes: [s.name],
+                message: `"${s.name}" is very small (${s.width.toFixed(1)} x ${s.height.toFixed(1)} pt)`,
+              })
+            }
+          }
+        }
+
+        const result = { slideIndex, shapeCount: shapes.length, issueCount: issues.length, issues }
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: read_slide_zip ---
+  server.tool(
+    'read_slide_zip',
+    'Read multiple files from the exported slide zip. Returns slide XML, relationships, chart XMLs, and Content_Types. Use this to inspect chart data, rels, or other zip contents beyond what read_slide_xml provides. When no paths specified, auto-discovers all text/XML files in the zip.',
+    {
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index'),
+      paths: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Specific zip paths to read (e.g. ["ppt/slides/slide1.xml", "ppt/charts/chart1.xml"]). If omitted, auto-discovers all text/XML files.',
+        ),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideIndex, paths, presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+        const exported = await exportSlide(pool, slideIndex, target.ws)
+        const { zip, files } = await extractZipFiles(exported.base64, paths)
+        const allPaths = listZipPaths(zip)
+        const result = { zipContents: files, allPaths }
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: edit_slide_zip ---
+  server.tool(
+    'edit_slide_zip',
+    'Update multiple files in the slide zip and reimport in a single operation. Accepts a map of { path: content } — can modify existing files or add new ones (e.g. chart XML + rels). Auto-registers Content_Types for new chart files. Use read_slide_zip first to get the current content.',
+    {
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index'),
+      files: z
+        .record(z.string(), z.string())
+        .describe(
+          'Map of { zipPath: newContent }. Can include existing paths (to modify) or new paths (to add). Example: { "ppt/slides/slide1.xml": "<p:sld>...</p:sld>", "ppt/charts/chart1.xml": "<c:chartSpace>...</c:chartSpace>" }',
+        ),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideIndex, files, presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+        const exported = await exportSlide(pool, slideIndex, target.ws)
+        const { zip } = await extractZipFiles(exported.base64)
+
+        // Detect new files (not already in zip) for Content_Types auto-registration
+        const existingPaths = new Set(listZipPaths(zip))
+        const newPaths = Object.keys(files).filter((p) => !existingPaths.has(p))
+
+        // Apply user-provided file changes first (explicit takes precedence)
+        const modifiedBase64 = await updateZipFiles(zip, files)
+
+        // Auto-register Content_Types for new chart files (if not already handled by user)
+        if (newPaths.length > 0 && !files['[Content_Types].xml']) {
+          const { zip: updatedZip } = await extractZipFiles(modifiedBase64)
+          await autoRegisterContentTypes(updatedZip, newPaths)
+          const finalBase64 = await updatedZip.generateAsync({ type: 'base64' })
+          await reimportSlide(pool, finalBase64, exported.slideId, exported.prevSlideId, target.ws)
+        } else {
+          await reimportSlide(pool, modifiedBase64, exported.slideId, exported.prevSlideId, target.ws)
+        }
+
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
+        const text =
+          JSON.stringify({ success: true, filesUpdated: Object.keys(files).length, newFiles: newPaths }, null, 2) +
+          (warning ?? '')
+        return { content: [{ type: 'text' as const, text }] }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }

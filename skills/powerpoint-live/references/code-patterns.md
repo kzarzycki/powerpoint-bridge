@@ -196,6 +196,78 @@ context.presentation.insertSlidesFromBase64(base64String, {
 await context.sync();
 ```
 
+## OOXML Text Editing
+
+Use the OOXML tools for fine-grained formatting control. Load the `/pptx` skill for OOXML structure knowledge. See [ooxml-reference.md](ooxml-reference.md) for the full live-editing reference (batching, units, gotchas).
+
+```
+// 1. Read current paragraphs (raw OOXML)
+read_slide_text(slideIndex: 0, shapeId: "2")
+// Returns: <a:p><a:r><a:rPr lang="en-US" b="1"/><a:t>Hello</a:t></a:r></a:p>
+
+// 2. Modify the XML (add color, change text, etc.)
+// 3. Write back
+edit_slide_text(slideIndex: 0, shapeId: "2", xml: '<a:p><a:r><a:rPr lang="en-US" b="1"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:rPr><a:t>Red Bold</a:t></a:r></a:p>')
+```
+
+For full slide or shape XML editing:
+
+```
+// Read full slide XML
+read_slide_xml(slideIndex: 0)
+
+// Read specific shape XML
+read_slide_xml(slideIndex: 0, shapeId: "5")
+
+// Replace a shape's XML
+edit_slide_xml(slideIndex: 0, shapeId: "5", xml: '<p:sp>...</p:sp>')
+
+// Replace full slide XML (batch multiple shapes in one reimport)
+edit_slide_xml(slideIndex: 0, xml: '<p:sld>...</p:sld>')
+```
+
+## Multi-File Zip Editing
+
+For charts, rels, Content_Types, or other zip entries beyond slide XML. See [ooxml-reference.md](ooxml-reference.md) for details.
+
+```
+// 1. Read all text/xml files from the slide zip (auto-discovers)
+read_slide_zip(slideIndex: 0)
+// Returns: { zipContents: { "ppt/slides/slide1.xml": "...", "[Content_Types].xml": "...", ... }, allPaths: [...] }
+
+// 2. Read specific files
+read_slide_zip(slideIndex: 0, paths: ["ppt/charts/chart1.xml", "ppt/slides/_rels/slide1.xml.rels"])
+
+// 3. Update multiple files in one reimport
+edit_slide_zip(slideIndex: 0, files: {
+  "ppt/slides/slide1.xml": "<p:sld>...modified...</p:sld>",
+  "ppt/charts/chart1.xml": "<c:chartSpace>...</c:chartSpace>"
+})
+// Auto-registers Content_Types for new chart files
+```
+
+## Duplicating Slides
+
+```
+// Duplicate slide 2 right after itself
+duplicate_slide(slideIndex: 2)
+
+// Duplicate slide 0, insert after slide 4
+duplicate_slide(slideIndex: 0, insertAfter: 4)
+```
+
+## Verifying Slides
+
+```
+// Run all checks (overlap, bounds, empty_text, tiny_shapes)
+verify_slides(slideIndex: 0)
+
+// Run specific checks only
+verify_slides(slideIndex: 0, checks: ["overlap", "bounds"])
+
+// Returns: { slideIndex, shapeCount, issueCount, issues: [{ check, severity, shapes, message }] }
+```
+
 ## Reading Content
 
 ```javascript
