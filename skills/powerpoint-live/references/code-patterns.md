@@ -71,6 +71,62 @@ await context.sync();
 
 To change layout on existing slide: `slide.applyLayout(layout);`
 
+## Building Entire Slides in One Call
+
+For efficiency, create ALL shapes for a slide in a single `execute_officejs` call. This avoids multiple round-trips, prevents mid-build visual flashing, and is much faster than separate calls per shape.
+
+```javascript
+var slides = context.presentation.slides;
+slides.load("items");
+await context.sync();
+var shapes = slides.items[0].shapes;
+
+// Card 1: background + title + body
+var card1 = shapes.addGeometricShape("RoundRectangle", { left: 50, top: 200, width: 420, height: 280 });
+card1.fill.setSolidColor("#F5F0EB");
+var title1 = shapes.addTextBox("Feature One", { left: 135, top: 220, width: 320, height: 30 });
+title1.textFrame.textRange.font.size = 18;
+title1.textFrame.textRange.font.bold = true;
+var body1 = shapes.addTextBox("Description of the first feature with key benefits.", { left: 135, top: 260, width: 320, height: 100 });
+body1.textFrame.textRange.font.size = 14;
+body1.textFrame.wordWrap = true;
+
+// Card 2: same pattern, offset right
+var card2 = shapes.addGeometricShape("RoundRectangle", { left: 500, top: 200, width: 420, height: 280 });
+card2.fill.setSolidColor("#F5F0EB");
+var title2 = shapes.addTextBox("Feature Two", { left: 585, top: 220, width: 320, height: 30 });
+title2.textFrame.textRange.font.size = 18;
+title2.textFrame.textRange.font.bold = true;
+var body2 = shapes.addTextBox("Description of the second feature.", { left: 585, top: 260, width: 320, height: 100 });
+body2.textFrame.textRange.font.size = 14;
+body2.textFrame.wordWrap = true;
+
+// Divider line
+shapes.addLine("Straight", { left: 0, top: 180, width: 960, height: 0 });
+
+await context.sync();
+```
+
+Build all shapes in one batch, then call `context.sync()` once at the end.
+
+## Template Chrome Awareness
+
+Template slides typically have placeholder shapes from the slide layout (metadata bar, title, slide number, footer) and sometimes decorative elements (HR divider lines). Before building content:
+
+1. List existing shapes via `get_slide` or `list_slide_shapes` to see what placeholders exist
+2. Note the placeholder positions — especially the title area (typically top ~108pt) and footer area (bottom ~763pt)
+3. Build your content shapes BELOW the existing chrome elements, not overlapping them
+4. Set text in existing placeholders (title, subtitle) rather than creating new TextBoxes for those roles
+
+```javascript
+// Discover existing placeholders before adding content
+var shapes = slides.items[0].shapes;
+shapes.load("items/id,items/name,items/type,items/left,items/top,items/width,items/height");
+await context.sync();
+var placeholders = shapes.items.filter(function(s) { return s.type === "Placeholder"; });
+// placeholders tell you where the chrome is — build content below them
+```
+
 ## Geometric Shapes
 
 ```javascript
@@ -464,6 +520,8 @@ verify_slides(slideIndex: 0, checks: ["overlap", "bounds"])
 
 After completing work, verify ALL modified slides:
 
+**Note on intentional overlaps:** Card layouts (TextBoxes + icons inside RoundedRectangles) and full-width decorative lines will always produce overlap warnings in `verify_slides`. These are expected — only act on overlaps between shapes that shouldn't be layered, or on overflow (shapes going off-slide). For large decks, run structural `verify_slides` on all slides but only visually verify the 4-5 most complex ones via subagent.
+
 1. **Auto-size first:** If you edited text, set `autoSizeSetting = "AutoSizeShapeToFitText"` on those shapes — otherwise `verify_slides` sees stale dimensions:
 
 ```javascript
@@ -547,11 +605,18 @@ search_icons(query: "warning", top: 5)
 insert_icon(iconId: "Icons_Warning", slideIndex: 0, x: 100, y: 100, width: 48, height: 48, color: "#FF5733")
 ```
 
-**Variants:** filled (`isMono: false`, e.g. `Icons_Dog`) = colorful. Mono (`isMono: true`, e.g. `Icons_Dog_M`) = clean line-art.
+**Variants:** filled (`isMono: false`, e.g. `Icons_Dog`) = colorful. Mono (`isMono: true`, e.g. `Icons_Dog_M`) = clean line-art. Prefer mono (`_M`) variants for professional decks — they're cleaner and recolorable.
 
 **Sizing:** 36-48pt inline next to text, 72pt default, 72-144pt decorative hero.
 
 **Coloring:** Pass `color` hex to `insert_icon`. Do NOT use `shape.fill.setSolidColor()` — that sets shape background, not SVG paths. To recolor existing icons: use `edit_slide_xml` to modify SVG, inject `<style>.iconFill{fill:#HEX;}</style>` after opening `<svg>` tag.
+
+**Parallel operations:** When placing icons on multiple cards, search for ALL icons in parallel (multiple `search_icons` calls at once), then insert ALL icons in parallel (multiple `insert_icon` calls at once). This is significantly faster than sequential one-at-a-time operations.
+
+**Retry with alternative keywords:** If `search_icons` returns no good matches, retry with synonyms or related concepts:
+- Abstract concepts → concrete objects: "innovation" → "lightbulb", "opinionated" → "compass", "security" → "shield"
+- Actions → objects: "assessment" → "clipboard", "collaboration" → "handshake", "engineering" → "wrench"
+- Compound concepts → simpler: "no lock-in" → "unlock", "faster delivery" → "rocket"
 
 **Fallbacks** (if search returns nothing): geometric shape (filled circle + symbolic shape on top), or circle with single character in textFrame. Never use emoji or Unicode symbols.
 

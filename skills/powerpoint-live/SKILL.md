@@ -45,9 +45,9 @@ All positioning values from `get_slide` are in **points** (1 pt = 1/72 inch). St
 ## Workflow
 
 1. **Discover**: `list_presentations` — find connected presentations
-2. **Understand**: `get_deck_overview` — visual overview of all slides in one call; or `get_presentation` then `get_slide` for targeted inspection
-3. **See**: `get_slide_image` — visually inspect a specific slide
-4. **Modify**: `execute_officejs` — make changes with Office.js code
+2. **Audit**: Check existing state — slide count, available layouts, which slides already have content. Use `get_deck_overview` for a visual overview, or `get_presentation` then `get_slide` per slide. This is essential for resuming partial builds or modifying existing decks.
+3. **See**: `get_slide_image` — visually inspect specific slides
+4. **Modify**: `execute_officejs` — build entire slides in a single call (all shapes, text, connectors, accents at once) for efficiency and to avoid mid-build visual flashing
 5. **Verify**: full verification loop (see below)
 
 Always inspect before modifying. Always verify after modifying.
@@ -62,6 +62,10 @@ After completing work on a slide:
 4. **Fix issues** and re-verify until clean
 
 If overlaps/overflow: shorten text, reduce font, reposition body content (not title), or split across slides.
+
+**Intentional overlaps**: When using card patterns (TextBoxes + icons inside RoundedRectangles), `verify_slides` will report many overlaps — these are expected by design. Also, decorative HR lines spanning the full width will overlap with adjacent elements. Only act on overlaps between shapes that should NOT be layered, or on overflow (shapes going off-slide).
+
+**Efficient verification**: For large decks, visually verify only the most complex slides (high shape count, dense content) rather than every slide. Run `verify_slides` on all slides structurally, but pick 4-5 key slides for the visual subagent check.
 
 ### Visual Review via Subagent
 
@@ -108,6 +112,41 @@ For charts, use `edit_slide_chart` (declarative) or `edit_slide_zip` (raw OOXML)
 - Prefer more slides with less content over fewer dense slides
 - Use full slide area — stretch content to fill, don't leave large margins
 - Never use emoji or Unicode symbols as icons — use geometric shapes as icon substitutes
+
+## Slide Layout Recipes
+
+Common visual patterns for building slides. Adapt colors and content to the user's design system.
+
+### Card Grid
+RoundedRectangle as background → TextBox for title (offset ~85pt from left edge for icon space) → TextBox for body below title → Icon (36-48pt) at top-left corner of card.
+
+Calculate card width: `(contentWidth - gaps) / numColumns`. Common configurations: 2x2, 3-across, 4-across, 5-across.
+
+**Intentional overlaps**: Card patterns always report overlaps in `verify_slides` because TextBoxes and icons sit inside the RoundedRectangle. These are expected — only worry about overflow (shapes going off-slide) or unintended sibling overlaps.
+
+### Icon + Text Blocks
+Icon (36-48pt) left-aligned → Title TextBox at icon's right → Description TextBox below title, all inside a large RoundedRectangle container. Good for feature lists, "about us" sections, service descriptions.
+
+### Key Numbers / Stats Panel
+Large font number (accent color, 28-36pt) + small label below (14-16pt), stacked vertically with separator lines between entries. Good for KPIs, proof points, metrics panels.
+
+### Pillar / Category Map
+Vertical tall cards (equal width, evenly spaced) + horizontal bar spanning all pillars at bottom + dashed arrow connectors from each pillar down to the bar. Shows hierarchy: categories above → shared foundation below.
+
+### Left-Right Content Split
+Content panel (left, ~45% width) + stats/data panel (right, ~45% width) with a gap between. Good for combining narrative text with data points or proof points.
+
+### Layered Stack
+Horizontal rectangles stacked vertically with graduated fill color (darkest at top or bottom). Each layer has a title and description. Shows hierarchy, maturity levels, or technology stacks.
+
+### Before/After Split
+Two contrasting colored panels side by side (e.g., muted red for "without" vs green for "with"). Each panel lists bullet points. Optional full-width CTA bar below.
+
+### Case Study / Reference Cards
+3 equal-width tall cards, each with: header area (company/project name), description body, and metrics/outcomes section at the bottom.
+
+### Cards with Tier/Tag Badges
+Standard cards with a small colored RoundedRectangle "badge" overlaid (e.g., showing a tier level, category label, or status tag). Badge is typically 80-120pt wide, 20-28pt tall, positioned at top-right of the card.
 
 ## Gotchas
 
