@@ -12,7 +12,9 @@ on:
 
 jobs:
   claude-review:
-    if: github.event.pull_request.author_association == 'OWNER'
+    if: >-
+      github.event.pull_request.author_association == 'OWNER' ||
+      github.event.pull_request.user.login == 'claude[bot]'
 
     runs-on: ubuntu-latest
     permissions:
