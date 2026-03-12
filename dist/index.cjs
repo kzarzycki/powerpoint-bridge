@@ -50529,6 +50529,58 @@ ${textParts.join("\n")}` : "\n(no text content)";
   );
 }
 
+// server/version-check.ts
+async function checkForUpdate(options) {
+  const {
+    currentVersion,
+    packageName = "powerpoint-bridge",
+    registryUrl = "https://registry.npmjs.org",
+    timeoutMs = 3e3
+  } = options;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${registryUrl}/${packageName}/latest`, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" }
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const latest = data.version;
+    if (!latest) return null;
+    return {
+      latest,
+      current: currentVersion,
+      updateAvailable: isNewer(latest, currentVersion)
+    };
+  } catch {
+    return null;
+  }
+}
+function isNewer(latest, current) {
+  const parse3 = (v) => v.replace(/^v/, "").split("-")[0].split(".").map(Number);
+  const [lMajor = 0, lMinor = 0, lPatch = 0] = parse3(latest);
+  const [cMajor = 0, cMinor = 0, cPatch = 0] = parse3(current);
+  if (lMajor !== cMajor) return lMajor > cMajor;
+  if (lMinor !== cMinor) return lMinor > cMinor;
+  return lPatch > cPatch;
+}
+function runVersionCheck(currentVersion) {
+  if (process.env.BRIDGE_NO_UPDATE_CHECK === "1") return;
+  if (process.argv.includes("--no-update-check")) return;
+  checkForUpdate({ currentVersion }).then((result) => {
+    if (result?.updateAvailable) {
+      console.error(
+        `
+  Update available: v${result.current} \u2192 v${result.latest}
+  Run "npm update -g powerpoint-bridge" to upgrade
+`
+      );
+    }
+  });
+}
+
 // server/index.ts
 var import_meta = {};
 var BRIDGE_DEFAULT_HTTP_PORT = 8080;
@@ -50879,6 +50931,11 @@ if (stdioActive) {
   stdioMcpServer.connect(stdioTransport).then(() => {
     console.error("MCP STDIO transport running");
   });
+}
+try {
+  const pkg = JSON.parse((0, import_node_fs2.readFileSync)((0, import_node_path2.resolve)(PROJECT_ROOT, "package.json"), "utf8"));
+  runVersionCheck(pkg.version);
+} catch {
 }
 var activeInterfaces = [
   stdioActive && "STDIO",
