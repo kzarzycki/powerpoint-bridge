@@ -30,6 +30,9 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Load CI instructions
         id: ci-instructions
         run: |
@@ -48,5 +51,6 @@ jobs:
             --model claude-opus-4-6
             --append-system-prompt "${{ steps.ci-instructions.outputs.content }}"
             --allowedTools WebSearch,WebFetch,
-            "Bash(npm run check)","Bash(npm run build)","Bash(npm run test)"
+            "Bash(npm run check)","Bash(npm run build)","Bash(npm run test)",
+            "Bash(gh pr create:*)"
 
