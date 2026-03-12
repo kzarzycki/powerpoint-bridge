@@ -25,5 +25,5 @@ When running in GitHub Actions via `@claude` mentions, follow this workflow mode
 **Before finishing implementation, always:**
 1. Run `npm run check` (lint + typecheck + test).
 2. If `server/` files changed: run `npm run build` and stage `dist/index.cjs` (it's committed).
-3. Review your own code for quality: look for duplication, missing edge cases, unnecessary complexity.
+3. Run `/simplify` to review changed code for reuse, quality, and efficiency.
 4. Create the PR with `gh pr create`. The PR must exist — do not just push a branch.
