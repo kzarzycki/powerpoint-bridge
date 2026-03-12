@@ -49152,6 +49152,12 @@ var ConnectionPool = class {
   }
 };
 
+// server/manifest.ts
+function substituteManifestPort(content, defaultPort, targetPort) {
+  if (defaultPort === targetPort) return content;
+  return content.replaceAll(`localhost:${defaultPort}`, `localhost:${targetPort}`);
+}
+
 // server/tools.ts
 var import_node_fs = require("node:fs");
 var import_node_os = require("node:os");
@@ -50576,7 +50582,7 @@ if (bridgeActive && bridgeTls && (!(0, import_node_fs2.existsSync)(BRIDGE_CERT_P
   process.exit(1);
 }
 var BRIDGE_PORT = Number(process.env.BRIDGE_PORT) || (bridgeTls ? BRIDGE_DEFAULT_HTTPS_PORT : BRIDGE_DEFAULT_HTTP_PORT);
-function autoSideloadManifest(tls) {
+function autoSideloadManifest(tls, port) {
   const markerFile = (0, import_node_path2.resolve)(PROJECT_ROOT, ".sideloaded");
   const pkgPath = (0, import_node_path2.resolve)(PROJECT_ROOT, "package.json");
   let currentVersion = "unknown";
@@ -50585,24 +50591,28 @@ function autoSideloadManifest(tls) {
     currentVersion = pkg.version;
   } catch {
   }
+  const markerValue = `${currentVersion}:${port}`;
   try {
-    const markerVersion = (0, import_node_fs2.readFileSync)(markerFile, "utf8").trim();
-    if (markerVersion === currentVersion) {
+    const existing = (0, import_node_fs2.readFileSync)(markerFile, "utf8").trim();
+    if (existing === markerValue) {
       console.error("[sideload] Add-in already installed (use `npm run sideload` to update)");
       return;
     }
-    console.error(`[sideload] Version changed (${markerVersion} \u2192 ${currentVersion}), re-sideloading`);
+    console.error(`[sideload] Config changed (${existing} \u2192 ${markerValue}), re-sideloading`);
   } catch {
   }
+  const defaultPort = tls ? BRIDGE_DEFAULT_HTTPS_PORT : BRIDGE_DEFAULT_HTTP_PORT;
   const wefDir = (0, import_node_path2.join)((0, import_node_os2.homedir)(), "Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef");
   const manifestName = tls ? "manifest-https.xml" : "manifest.xml";
   const src = (0, import_node_path2.resolve)(ADDIN_STATIC_DIR, manifestName);
   const dest = (0, import_node_path2.join)(wefDir, "manifest.xml");
   try {
     if (!(0, import_node_fs2.existsSync)(src)) return;
+    const template = (0, import_node_fs2.readFileSync)(src, "utf8");
+    const content = substituteManifestPort(template, defaultPort, port);
     (0, import_node_fs2.mkdirSync)(wefDir, { recursive: true });
-    (0, import_node_fs2.copyFileSync)(src, dest);
-    (0, import_node_fs2.writeFileSync)(markerFile, currentVersion);
+    (0, import_node_fs2.writeFileSync)(dest, content);
+    (0, import_node_fs2.writeFileSync)(markerFile, markerValue);
     console.error("[sideload] Add-in manifest installed for PowerPoint");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -50761,7 +50771,7 @@ function serveStatic(req, res) {
   res.end(content);
 }
 if (bridgeActive) {
-  autoSideloadManifest(bridgeTls);
+  autoSideloadManifest(bridgeTls, BRIDGE_PORT);
   const bridgeServer = bridgeTls ? (0, import_node_https.createServer)({ cert: (0, import_node_fs2.readFileSync)(BRIDGE_CERT_PATH), key: (0, import_node_fs2.readFileSync)(BRIDGE_KEY_PATH) }, serveStatic) : (0, import_node_http.createServer)(serveStatic);
   const wss = new import_websocket_server.default({ server: bridgeServer });
   wss.on("connection", (ws) => {
