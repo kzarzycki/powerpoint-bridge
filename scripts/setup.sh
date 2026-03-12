@@ -6,12 +6,8 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 echo "=== PowerPoint Bridge Setup ==="
 echo ""
 
-# 1. Sideload add-in manifest (HTTP by default)
-WEF_DIR="$HOME/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
-mkdir -p "$WEF_DIR"
-cp "$REPO_DIR/addin/manifest.xml" "$WEF_DIR/"
-node -p "require('$REPO_DIR/package.json').version" > "$REPO_DIR/.sideloaded"
-echo "[add-in] Manifest sideloaded to PowerPoint (HTTP mode)"
+# 1. Sideload add-in manifest (HTTP by default, honours BRIDGE_PORT)
+node "$REPO_DIR/scripts/sideload.mjs"
 
 # 2. Install skill globally (skip if running as a Claude Code plugin)
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then

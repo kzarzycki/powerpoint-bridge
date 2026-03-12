@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
@@ -14,6 +14,7 @@ import type { WebSocket } from 'ws'
 import { WebSocketServer } from 'ws'
 
 import { ConnectionPool } from './bridge.ts'
+import { substituteManifestPort } from './manifest.ts'
 import { clearSessionWarnings, registerTools } from './tools.ts'
 
 // ---------------------------------------------------------------------------
@@ -101,11 +102,11 @@ const BRIDGE_PORT =
 // Auto-sideload add-in manifest
 // ---------------------------------------------------------------------------
 
-function autoSideloadManifest(tls: boolean): void {
+function autoSideloadManifest(tls: boolean, port: number): void {
   // Sideloading copies the add-in manifest into PowerPoint's sandboxed container,
   // which triggers a macOS TCC prompt ("node would like to access data from other
   // apps"). We use a versioned marker file (.sideloaded) to skip sideloading when
-  // the version hasn't changed, so the prompt only appears on first install or
+  // the version/port hasn't changed, so the prompt only appears on first install or
   // after an update. Use `npm run sideload` to force re-install.
   const markerFile = resolve(PROJECT_ROOT, '.sideloaded')
   const pkgPath = resolve(PROJECT_ROOT, 'package.json')
@@ -116,26 +117,31 @@ function autoSideloadManifest(tls: boolean): void {
     currentVersion = pkg.version
   } catch {}
 
+  const markerValue = `${currentVersion}:${port}`
+
   try {
-    const markerVersion = readFileSync(markerFile, 'utf8').trim()
-    if (markerVersion === currentVersion) {
+    const existing = readFileSync(markerFile, 'utf8').trim()
+    if (existing === markerValue) {
       console.error('[sideload] Add-in already installed (use `npm run sideload` to update)')
       return
     }
-    console.error(`[sideload] Version changed (${markerVersion} → ${currentVersion}), re-sideloading`)
+    console.error(`[sideload] Config changed (${existing} → ${markerValue}), re-sideloading`)
   } catch {
     // marker doesn't exist — first install
   }
 
+  const defaultPort = tls ? BRIDGE_DEFAULT_HTTPS_PORT : BRIDGE_DEFAULT_HTTP_PORT
   const wefDir = join(homedir(), 'Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef')
   const manifestName = tls ? 'manifest-https.xml' : 'manifest.xml'
   const src = resolve(ADDIN_STATIC_DIR, manifestName)
   const dest = join(wefDir, 'manifest.xml')
   try {
     if (!existsSync(src)) return
+    const template = readFileSync(src, 'utf8')
+    const content = substituteManifestPort(template, defaultPort, port)
     mkdirSync(wefDir, { recursive: true })
-    copyFileSync(src, dest)
-    writeFileSync(markerFile, currentVersion)
+    writeFileSync(dest, content)
+    writeFileSync(markerFile, markerValue)
     console.error('[sideload] Add-in manifest installed for PowerPoint')
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -341,7 +347,7 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
 // ---------------------------------------------------------------------------
 
 if (bridgeActive) {
-  autoSideloadManifest(bridgeTls)
+  autoSideloadManifest(bridgeTls, BRIDGE_PORT)
 
   const bridgeServer = bridgeTls
     ? createHttpsServer({ cert: readFileSync(BRIDGE_CERT_PATH), key: readFileSync(BRIDGE_KEY_PATH) }, serveStatic)
