@@ -30,15 +30,22 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Load CI instructions
+        id: ci-instructions
+        run: |
+          echo 'content<<EOF' >> $GITHUB_OUTPUT
+          cat .github/claude-instructions.md >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
           additional_permissions: |
             actions: read
           claude_args: >-
+            --append-system-prompt "${{ steps.ci-instructions.outputs.content }}"
             --allowedTools WebSearch,WebFetch,
             "Bash(npm run check)","Bash(npm run build)","Bash(npm run test)"
 
