@@ -15218,7 +15218,7 @@ var require_BufferList = __commonJS({
         this.head = this.tail = null;
         this.length = 0;
       };
-      BufferList.prototype.join = function join3(s) {
+      BufferList.prototype.join = function join4(s) {
         if (this.length === 0) return "";
         var p = this.head;
         var ret = "" + p.data;
@@ -24671,12 +24671,12 @@ var require_lib4 = __commonJS({
 
 // server/index.ts
 var import_node_crypto2 = require("node:crypto");
-var import_node_fs2 = require("node:fs");
+var import_node_fs3 = require("node:fs");
 var import_node_http = require("node:http");
 var import_node_https = require("node:https");
 var import_node_os2 = require("node:os");
-var import_node_path2 = require("node:path");
-var import_node_url = require("node:url");
+var import_node_path3 = require("node:path");
+var import_node_url2 = require("node:url");
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -49159,9 +49159,9 @@ function substituteManifestPort(content, defaultPort, targetPort) {
 }
 
 // server/tools.ts
-var import_node_fs = require("node:fs");
+var import_node_fs2 = require("node:fs");
 var import_node_os = require("node:os");
-var import_node_path = require("node:path");
+var import_node_path2 = require("node:path");
 
 // server/chart-builder.ts
 var C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart";
@@ -49347,6 +49347,184 @@ function resolveChartPosition(pos) {
     cx: pointsToEmu(p.width),
     cy: pointsToEmu(p.height)
   };
+}
+
+// server/icons.ts
+var import_node_fs = require("node:fs");
+var import_node_path = require("node:path");
+var import_node_url = require("node:url");
+var import_meta = {};
+var MANIFEST_URL = "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/fonts/FluentSystemIcons-Regular.json";
+var CDN_BASE = "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets";
+var DEFAULT_SIZE = 24;
+var cachedIndex = null;
+var svgCache = /* @__PURE__ */ new Map();
+function snakeToTitle(s) {
+  return s.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+function titleToSnake(s) {
+  return s.replace(/\s+/g, "_").toLowerCase();
+}
+function nameToId(name, mono) {
+  const base = `Icons_${name.replace(/\s+/g, "_")}`;
+  return mono ? `${base}_M` : base;
+}
+function parseIconId(iconId) {
+  let id = iconId;
+  let isMono = false;
+  if (id.endsWith("_M")) {
+    isMono = true;
+    id = id.slice(0, -2);
+  }
+  if (id.startsWith("Icons_")) {
+    id = id.slice(6);
+  }
+  return { snakeName: id.toLowerCase(), isMono };
+}
+function buildIndexFromManifest(manifest) {
+  const seen = /* @__PURE__ */ new Set();
+  const entries = [];
+  for (const key of Object.keys(manifest)) {
+    const match = key.match(/^ic_fluent_(.+)_(\d+)_regular$/);
+    if (!match) continue;
+    const snakeName = match[1];
+    if (seen.has(snakeName)) continue;
+    seen.add(snakeName);
+    const name = snakeToTitle(snakeName);
+    entries.push({
+      name,
+      snakeName,
+      keywords: snakeName.split("_")
+    });
+  }
+  return entries.sort((a, b) => a.name.localeCompare(b.name));
+}
+function loadStaticIndex() {
+  try {
+    const dir = (0, import_node_path.dirname)((0, import_node_url.fileURLToPath)(import_meta.url));
+    const raw = (0, import_node_fs.readFileSync)((0, import_node_path.join)(dir, "icon-index.json"), "utf-8");
+    const data = JSON.parse(raw);
+    return data.map((e) => ({
+      name: e.n,
+      snakeName: titleToSnake(e.n),
+      keywords: e.k.split(" ")
+    }));
+  } catch {
+    return null;
+  }
+}
+async function loadIndex() {
+  if (cachedIndex) return cachedIndex;
+  const staticIndex = loadStaticIndex();
+  if (staticIndex && staticIndex.length > 0) {
+    cachedIndex = staticIndex;
+    return cachedIndex;
+  }
+  const resp = await fetch(MANIFEST_URL);
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch icon manifest: ${resp.status} ${resp.statusText}`);
+  }
+  const manifest = await resp.json();
+  cachedIndex = buildIndexFromManifest(manifest);
+  return cachedIndex;
+}
+function scoreMatch(entry, queryWords) {
+  let score = 0;
+  const nameLower = entry.name.toLowerCase();
+  const allWords = [nameLower, ...entry.keywords];
+  for (const qw of queryWords) {
+    if (entry.keywords.includes(qw)) {
+      score += 10;
+      continue;
+    }
+    if (nameLower.includes(qw)) {
+      score += 8;
+      continue;
+    }
+    if (entry.keywords.some((kw) => kw.startsWith(qw))) {
+      score += 5;
+      continue;
+    }
+    if (allWords.some((w) => w.includes(qw))) {
+      score += 3;
+      continue;
+    }
+    score -= 2;
+  }
+  const queryJoined = queryWords.join(" ");
+  if (nameLower === queryJoined) {
+    score += 20;
+  }
+  return score;
+}
+async function searchIcons(query, top = 10, style) {
+  const index = await loadIndex();
+  const queryWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 0);
+  if (queryWords.length === 0) return [];
+  const scored = index.map((entry) => ({ entry, score: scoreMatch(entry, queryWords) })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, top);
+  const isMono = style === "regular";
+  const isFilled = style === "filled";
+  if (!isMono && !isFilled) {
+    const results = [];
+    for (const { entry, score } of scored) {
+      results.push({
+        id: nameToId(entry.name, true),
+        description: `${entry.name} (mono/outline)`,
+        isMono: true,
+        contentTier: "free",
+        searchScore: score
+      });
+      results.push({
+        id: nameToId(entry.name, false),
+        description: `${entry.name} (filled)`,
+        isMono: false,
+        contentTier: "free",
+        searchScore: score
+      });
+    }
+    return results.slice(0, top);
+  }
+  return scored.map(({ entry, score }) => ({
+    id: nameToId(entry.name, isMono),
+    description: `${entry.name} (${isMono ? "mono/outline" : "filled"})`,
+    isMono,
+    contentTier: "free",
+    searchScore: score
+  }));
+}
+function buildSvgUrl(snakeName, isMono) {
+  const dirName = snakeToTitle(snakeName);
+  const style = isMono ? "regular" : "filled";
+  const fileName = `ic_fluent_${snakeName}_${DEFAULT_SIZE}_${style}.svg`;
+  return `${CDN_BASE}/${encodeURIComponent(dirName)}/SVG/${fileName}`;
+}
+function recolorSvg(svg, color) {
+  const styleTag = `<style>.icon-color{fill:${color}}</style>`;
+  let result = svg.replace(/(<svg[^>]*>)/, `$1${styleTag}`);
+  result = result.replace(/(<(?:path|circle|rect|polygon|ellipse)[^>]*?)fill="[^"]*"/g, '$1class="icon-color"');
+  result = result.replace(
+    /(<(?:path|circle|rect|polygon|ellipse)(?![^>]*class=)[^>]*?)(\/?>)/g,
+    '$1 class="icon-color"$2'
+  );
+  return result;
+}
+async function fetchIconSvg(iconId, color) {
+  const { snakeName, isMono } = parseIconId(iconId);
+  const cacheKey2 = `${snakeName}:${isMono ? "regular" : "filled"}`;
+  let svg = svgCache.get(cacheKey2);
+  if (!svg) {
+    const url2 = buildSvgUrl(snakeName, isMono);
+    const resp = await fetch(url2);
+    if (!resp.ok) {
+      throw new Error(`Failed to fetch icon SVG: ${resp.status} ${resp.statusText} (${url2})`);
+    }
+    svg = await resp.text();
+    svgCache.set(cacheKey2, svg);
+  }
+  if (color) {
+    svg = recolorSvg(svg, color);
+  }
+  return Buffer.from(svg).toString("base64");
 }
 
 // server/xml-helpers.ts
@@ -49829,7 +50007,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
       try {
         let base64Data;
         if (sourceType === "file") {
-          base64Data = (0, import_node_fs.readFileSync)(source).toString("base64");
+          base64Data = (0, import_node_fs2.readFileSync)(source).toString("base64");
         } else if (sourceType === "url") {
           const resp = await fetch(source);
           if (!resp.ok) {
@@ -49975,7 +50153,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
         const target = pool2.resolveTarget(presentationId);
         const filePath = target.filePath;
         if (filePath && !filePath.startsWith("http")) {
-          if (!(0, import_node_fs.existsSync)(filePath)) {
+          if (!(0, import_node_fs2.existsSync)(filePath)) {
             return {
               content: [{ type: "text", text: `Error: Local file not found: ${filePath}` }],
               isError: true
@@ -49993,7 +50171,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
         `;
         const currentRevision = await pool2.sendCommand("executeCode", { code: revCode }, target.ws);
         const cached2 = localCopyCache.get(target.presentationId);
-        if (cached2 && cached2.revision === currentRevision && (0, import_node_fs.existsSync)(cached2.localPath)) {
+        if (cached2 && cached2.revision === currentRevision && (0, import_node_fs2.existsSync)(cached2.localPath)) {
           return {
             content: [
               {
@@ -50049,8 +50227,8 @@ ${textParts.join("\n")}` : "\n(no text content)";
         `;
         const base643 = await pool2.sendCommand("executeCode", { code: exportCode }, target.ws, 12e4);
         const filename = filePath ? decodeURIComponent(filePath.split("/").pop() || "presentation.pptx") : "presentation.pptx";
-        const dest = (0, import_node_path.join)((0, import_node_os.tmpdir)(), `pptbridge-${Date.now()}-${filename}`);
-        (0, import_node_fs.writeFileSync)(dest, Buffer.from(base643, "base64"));
+        const dest = (0, import_node_path2.join)((0, import_node_os.tmpdir)(), `pptbridge-${Date.now()}-${filename}`);
+        (0, import_node_fs2.writeFileSync)(dest, Buffer.from(base643, "base64"));
         localCopyCache.set(target.presentationId, { localPath: dest, revision: currentRevision });
         return {
           content: [
@@ -50527,18 +50705,92 @@ ${textParts.join("\n")}` : "\n(no text content)";
       }
     }
   );
+  server.tool(
+    "search_icons",
+    'Search Microsoft Fluent UI icon library. Returns matching icons with IDs for use with insert_icon. Prefer mono (_M) variants for professional decks. Retry with synonyms if no good matches (e.g. "innovation" \u2192 "lightbulb", "security" \u2192 "shield").',
+    {
+      query: external_exports3.string().describe('Search query (e.g. "warning", "arrow down", "lightbulb")'),
+      top: external_exports3.number().int().min(1).max(50).optional().describe("Max results to return (default 10)"),
+      style: external_exports3.enum(["regular", "filled"]).optional().describe('Filter by style: "regular" for mono/outline icons, "filled" for solid icons. Omit for both.')
+    },
+    async ({ query, top, style }) => {
+      try {
+        const results = await searchIcons(query, top ?? 10, style);
+        return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+  server.tool(
+    "insert_icon",
+    "Insert a Fluent UI icon onto a slide. Fetches SVG from CDN, optionally recolors it, and inserts via Office.js. Use search_icons first to find the icon ID. Pass color as hex to tint mono icons.",
+    {
+      iconId: external_exports3.string().describe('Icon ID from search_icons (e.g. "Icons_Warning_M" for mono, "Icons_Warning" for filled)'),
+      slideIndex: external_exports3.number().int().min(0).optional().describe("Zero-based slide index. If omitted, inserts on the currently active slide."),
+      x: external_exports3.number().optional().describe("Horizontal position in points (1 point = 1/72 inch)"),
+      y: external_exports3.number().optional().describe("Vertical position in points"),
+      width: external_exports3.number().optional().describe("Icon width in points (default 72)"),
+      height: external_exports3.number().optional().describe("Icon height in points (default 72)"),
+      color: external_exports3.string().optional().describe('Hex color to tint the icon (e.g. "#FF5733"). Works best with mono (_M) icons.'),
+      presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
+    },
+    async ({ iconId, slideIndex, x, y, width, height, color, presentationId }) => {
+      try {
+        const base64Data = await fetchIconSvg(iconId, color);
+        const optionsParts = ["coercionType: Office.CoercionType.Image"];
+        if (x !== void 0) optionsParts.push(`imageLeft: ${x}`);
+        if (y !== void 0) optionsParts.push(`imageTop: ${y}`);
+        if (width !== void 0) optionsParts.push(`imageWidth: ${width}`);
+        if (height !== void 0) optionsParts.push(`imageHeight: ${height}`);
+        const optionsStr = `{ ${optionsParts.join(", ")} }`;
+        const insertCall = `Office.context.document.setSelectedDataAsync("${base64Data}", ${optionsStr}, function(result) {
+        if (result.status === Office.AsyncResultStatus.Succeeded) {
+          resolve({ success: true });
+        } else {
+          reject(new Error(result.error.message));
+        }
+      });`;
+        let code;
+        if (slideIndex !== void 0) {
+          code = `return new Promise(function(resolve, reject) {
+      Office.context.document.goToByIdAsync(${slideIndex + 1}, Office.GoToType.Index, function(navResult) {
+        if (navResult.status !== Office.AsyncResultStatus.Succeeded) {
+          reject(new Error("Navigation failed: " + navResult.error.message));
+          return;
+        }
+        ${insertCall}
+      });
+    });`;
+        } else {
+          code = `return new Promise(function(resolve, reject) {
+      ${insertCall}
+    });`;
+        }
+        const target = pool2.resolveTarget(presentationId);
+        const result = await pool2.sendCommand("executeCode", { code }, target.ws);
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
+        const text = JSON.stringify(result ?? { success: true, iconId }, null, 2) + (warning ?? "");
+        return { content: [{ type: "text", text }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
 }
 
 // server/index.ts
-var import_meta = {};
+var import_meta2 = {};
 var BRIDGE_DEFAULT_HTTP_PORT = 8080;
 var BRIDGE_DEFAULT_HTTPS_PORT = 8443;
 var MCP_HTTP_PORT = Number(process.env.MCP_PORT) || 3001;
-var SCRIPT_DIR = typeof __dirname !== "undefined" ? __dirname : (0, import_node_path2.dirname)((0, import_node_url.fileURLToPath)(import_meta.url));
-var PROJECT_ROOT = (0, import_node_path2.resolve)(SCRIPT_DIR, "..");
-var BRIDGE_CERT_PATH = (0, import_node_path2.resolve)(PROJECT_ROOT, "certs", "localhost.pem");
-var BRIDGE_KEY_PATH = (0, import_node_path2.resolve)(PROJECT_ROOT, "certs", "localhost-key.pem");
-var ADDIN_STATIC_DIR = (0, import_node_path2.resolve)(PROJECT_ROOT, "addin");
+var SCRIPT_DIR = typeof __dirname !== "undefined" ? __dirname : (0, import_node_path3.dirname)((0, import_node_url2.fileURLToPath)(import_meta2.url));
+var PROJECT_ROOT = (0, import_node_path3.resolve)(SCRIPT_DIR, "..");
+var BRIDGE_CERT_PATH = (0, import_node_path3.resolve)(PROJECT_ROOT, "certs", "localhost.pem");
+var BRIDGE_KEY_PATH = (0, import_node_path3.resolve)(PROJECT_ROOT, "certs", "localhost-key.pem");
+var ADDIN_STATIC_DIR = (0, import_node_path3.resolve)(PROJECT_ROOT, "addin");
 var cliArgs = process.argv.slice(2);
 var enableStdio = cliArgs.includes("--stdio");
 var enableHttp = cliArgs.includes("--http");
@@ -50573,7 +50825,7 @@ Flags (composable):
   process.exit(1);
 }
 var bridgeTls = process.env.BRIDGE_TLS === "1";
-if (bridgeActive && bridgeTls && (!(0, import_node_fs2.existsSync)(BRIDGE_CERT_PATH) || !(0, import_node_fs2.existsSync)(BRIDGE_KEY_PATH))) {
+if (bridgeActive && bridgeTls && (!(0, import_node_fs3.existsSync)(BRIDGE_CERT_PATH) || !(0, import_node_fs3.existsSync)(BRIDGE_KEY_PATH))) {
   console.error(
     `Error: BRIDGE_TLS=1 but TLS certificate files not found.
   Expected: ${BRIDGE_CERT_PATH} and ${BRIDGE_KEY_PATH}
@@ -50583,17 +50835,17 @@ if (bridgeActive && bridgeTls && (!(0, import_node_fs2.existsSync)(BRIDGE_CERT_P
 }
 var BRIDGE_PORT = Number(process.env.BRIDGE_PORT) || (bridgeTls ? BRIDGE_DEFAULT_HTTPS_PORT : BRIDGE_DEFAULT_HTTP_PORT);
 function autoSideloadManifest(tls, port) {
-  const markerFile = (0, import_node_path2.resolve)(PROJECT_ROOT, ".sideloaded");
-  const pkgPath = (0, import_node_path2.resolve)(PROJECT_ROOT, "package.json");
+  const markerFile = (0, import_node_path3.resolve)(PROJECT_ROOT, ".sideloaded");
+  const pkgPath = (0, import_node_path3.resolve)(PROJECT_ROOT, "package.json");
   let currentVersion = "unknown";
   try {
-    const pkg = JSON.parse((0, import_node_fs2.readFileSync)(pkgPath, "utf8"));
+    const pkg = JSON.parse((0, import_node_fs3.readFileSync)(pkgPath, "utf8"));
     currentVersion = pkg.version;
   } catch {
   }
   const markerValue = `${currentVersion}:${port}`;
   try {
-    const existing = (0, import_node_fs2.readFileSync)(markerFile, "utf8").trim();
+    const existing = (0, import_node_fs3.readFileSync)(markerFile, "utf8").trim();
     if (existing === markerValue) {
       console.error("[sideload] Add-in already installed (use `npm run sideload` to update)");
       return;
@@ -50602,17 +50854,17 @@ function autoSideloadManifest(tls, port) {
   } catch {
   }
   const defaultPort = tls ? BRIDGE_DEFAULT_HTTPS_PORT : BRIDGE_DEFAULT_HTTP_PORT;
-  const wefDir = (0, import_node_path2.join)((0, import_node_os2.homedir)(), "Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef");
+  const wefDir = (0, import_node_path3.join)((0, import_node_os2.homedir)(), "Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef");
   const manifestName = tls ? "manifest-https.xml" : "manifest.xml";
-  const src = (0, import_node_path2.resolve)(ADDIN_STATIC_DIR, manifestName);
-  const dest = (0, import_node_path2.join)(wefDir, "manifest.xml");
+  const src = (0, import_node_path3.resolve)(ADDIN_STATIC_DIR, manifestName);
+  const dest = (0, import_node_path3.join)(wefDir, "manifest.xml");
   try {
-    if (!(0, import_node_fs2.existsSync)(src)) return;
-    const template = (0, import_node_fs2.readFileSync)(src, "utf8");
+    if (!(0, import_node_fs3.existsSync)(src)) return;
+    const template = (0, import_node_fs3.readFileSync)(src, "utf8");
     const content = substituteManifestPort(template, defaultPort, port);
-    (0, import_node_fs2.mkdirSync)(wefDir, { recursive: true });
-    (0, import_node_fs2.writeFileSync)(dest, content);
-    (0, import_node_fs2.writeFileSync)(markerFile, markerValue);
+    (0, import_node_fs3.mkdirSync)(wefDir, { recursive: true });
+    (0, import_node_fs3.writeFileSync)(dest, content);
+    (0, import_node_fs3.writeFileSync)(markerFile, markerValue);
     console.error("[sideload] Add-in manifest installed for PowerPoint");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -50638,7 +50890,7 @@ var MIME_TYPES = {
   ".ico": "image/x-icon"
 };
 function getMimeType(filePath) {
-  const ext = (0, import_node_path2.extname)(filePath);
+  const ext = (0, import_node_path3.extname)(filePath);
   return MIME_TYPES[ext] ?? "application/octet-stream";
 }
 function parseJsonBody(req) {
@@ -50755,24 +51007,24 @@ function serveStatic(req, res) {
     return;
   }
   const urlPath = rawUrl === "/" ? "/index.html" : rawUrl;
-  const filePath = (0, import_node_path2.resolve)((0, import_node_path2.join)(ADDIN_STATIC_DIR, urlPath));
+  const filePath = (0, import_node_path3.resolve)((0, import_node_path3.join)(ADDIN_STATIC_DIR, urlPath));
   if (!filePath.startsWith(ADDIN_STATIC_DIR)) {
     res.writeHead(403, { "Content-Type": "text/plain" });
     res.end("403 Forbidden");
     return;
   }
-  if (!(0, import_node_fs2.existsSync)(filePath)) {
+  if (!(0, import_node_fs3.existsSync)(filePath)) {
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("404 Not Found");
     return;
   }
-  const content = (0, import_node_fs2.readFileSync)(filePath);
+  const content = (0, import_node_fs3.readFileSync)(filePath);
   res.writeHead(200, { "Content-Type": getMimeType(filePath) });
   res.end(content);
 }
 if (bridgeActive) {
   autoSideloadManifest(bridgeTls, BRIDGE_PORT);
-  const bridgeServer = bridgeTls ? (0, import_node_https.createServer)({ cert: (0, import_node_fs2.readFileSync)(BRIDGE_CERT_PATH), key: (0, import_node_fs2.readFileSync)(BRIDGE_KEY_PATH) }, serveStatic) : (0, import_node_http.createServer)(serveStatic);
+  const bridgeServer = bridgeTls ? (0, import_node_https.createServer)({ cert: (0, import_node_fs3.readFileSync)(BRIDGE_CERT_PATH), key: (0, import_node_fs3.readFileSync)(BRIDGE_KEY_PATH) }, serveStatic) : (0, import_node_http.createServer)(serveStatic);
   const wss = new import_websocket_server.default({ server: bridgeServer });
   wss.on("connection", (ws) => {
     console.error("Add-in WebSocket connected");
