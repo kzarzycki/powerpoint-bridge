@@ -16,6 +16,7 @@ import { WebSocketServer } from 'ws'
 import { ConnectionPool } from './bridge.ts'
 import { substituteManifestPort } from './manifest.ts'
 import { clearSessionWarnings, registerTools } from './tools.ts'
+import { runVersionCheck } from './version-check.ts'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -481,6 +482,15 @@ if (stdioActive) {
     console.error('MCP STDIO transport running')
   })
 }
+
+// ---------------------------------------------------------------------------
+// Version check (non-blocking, fire-and-forget)
+// ---------------------------------------------------------------------------
+
+try {
+  const pkg = JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'package.json'), 'utf8'))
+  runVersionCheck(pkg.version)
+} catch {}
 
 // ---------------------------------------------------------------------------
 // Startup summary
