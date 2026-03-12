@@ -24,6 +24,109 @@ await context.sync();
 return slides.items.length;
 ```
 
+## Adding Slides with Layouts
+
+Always pick the layout that best matches content. Do NOT use "Blank" for slides with text.
+
+Common layouts: "Title Slide", "Title and Content", "Two Content", "Section Header", "Title Only", "Blank"
+
+```javascript
+// Find the right layout (always use the last master — earlier may be stale)
+var masters = context.presentation.slideMasters;
+masters.load("items");
+await context.sync();
+var slideMaster = masters.items[masters.items.length - 1];
+slideMaster.layouts.load("items,name");
+await context.sync();
+var layout = slideMaster.layouts.items.find(function(l) { return l.name === "Title and Content"; });
+
+// Add a slide with that layout
+var slides = context.presentation.slides;
+slides.add({ layoutId: layout.id });
+await context.sync();
+slides.load("items");
+await context.sync();
+var newSlide = slides.items[slides.items.length - 1];
+
+// Use placeholders (find by name pattern, then use shape.id for subsequent calls)
+var shapes = newSlide.shapes;
+shapes.load("items/id,items/name");
+await context.sync();
+var entries = shapes.items.map(function(shape) {
+  var tf = shape.getTextFrameOrNullObject();
+  tf.load(["hasText", "textRange"]);
+  return { shape: shape, tf: tf };
+});
+await context.sync();
+
+var title = entries.find(function(e) { return !e.tf.isNullObject && e.shape.name.startsWith("Title"); });
+if (title) title.tf.textRange.text = "My Slide Title";
+
+// Reposition: slides.add() always appends
+newSlide.moveTo(4); // 0-based target index
+await context.sync();
+```
+
+**Don't delete "empty" placeholders after writing text.** The `hasText` you loaded is stale once you set `textRange.text`, so a cleanup loop will delete what you just wrote.
+
+To change layout on existing slide: `slide.applyLayout(layout);`
+
+## Building Entire Slides in One Call
+
+For efficiency, create ALL shapes for a slide in a single `execute_officejs` call. This avoids multiple round-trips, prevents mid-build visual flashing, and is much faster than separate calls per shape.
+
+```javascript
+var slides = context.presentation.slides;
+slides.load("items");
+await context.sync();
+var shapes = slides.items[0].shapes;
+
+// Card 1: background + title + body
+var card1 = shapes.addGeometricShape("RoundRectangle", { left: 50, top: 200, width: 420, height: 280 });
+card1.fill.setSolidColor("#F5F0EB");
+var title1 = shapes.addTextBox("Feature One", { left: 135, top: 220, width: 320, height: 30 });
+title1.textFrame.textRange.font.size = 18;
+title1.textFrame.textRange.font.bold = true;
+var body1 = shapes.addTextBox("Description of the first feature with key benefits.", { left: 135, top: 260, width: 320, height: 100 });
+body1.textFrame.textRange.font.size = 14;
+body1.textFrame.wordWrap = true;
+
+// Card 2: same pattern, offset right
+var card2 = shapes.addGeometricShape("RoundRectangle", { left: 500, top: 200, width: 420, height: 280 });
+card2.fill.setSolidColor("#F5F0EB");
+var title2 = shapes.addTextBox("Feature Two", { left: 585, top: 220, width: 320, height: 30 });
+title2.textFrame.textRange.font.size = 18;
+title2.textFrame.textRange.font.bold = true;
+var body2 = shapes.addTextBox("Description of the second feature.", { left: 585, top: 260, width: 320, height: 100 });
+body2.textFrame.textRange.font.size = 14;
+body2.textFrame.wordWrap = true;
+
+// Divider line
+shapes.addLine("Straight", { left: 0, top: 180, width: 960, height: 0 });
+
+await context.sync();
+```
+
+Build all shapes in one batch, then call `context.sync()` once at the end.
+
+## Template Chrome Awareness
+
+Template slides typically have placeholder shapes from the slide layout (metadata bar, title, slide number, footer) and sometimes decorative elements (HR divider lines). Before building content:
+
+1. List existing shapes via `get_slide` or `list_slide_shapes` to see what placeholders exist
+2. Note the placeholder positions — especially the title area (typically top ~108pt) and footer area (bottom ~763pt)
+3. Build your content shapes BELOW the existing chrome elements, not overlapping them
+4. Set text in existing placeholders (title, subtitle) rather than creating new TextBoxes for those roles
+
+```javascript
+// Discover existing placeholders before adding content
+var shapes = slides.items[0].shapes;
+shapes.load("items/id,items/name,items/type,items/left,items/top,items/width,items/height");
+await context.sync();
+var placeholders = shapes.items.filter(function(s) { return s.type === "Placeholder"; });
+// placeholders tell you where the chrome is — build content below them
+```
+
 ## Geometric Shapes
 
 ```javascript
@@ -39,7 +142,23 @@ rect.fill.setSolidColor("#2196F3");
 await context.sync();
 ```
 
-Available types: `rectangle`, `roundedRectangle`, `ellipse`, `triangle`, `diamond`, `parallelogram`, `trapezoid`, `pentagon`, `hexagon`, `heptagon`, `octagon`, `decagon`, `dodecagon`, `star4`, `star5`, `star6`, `star8`, `star10`, `star12`, `star16`, `star24`, `star32`, `rightArrow`, `leftArrow`, `upArrow`, `downArrow`, `plus`, `heart`, `cloud`, and more.
+Use string literals for shape types:
+
+```javascript
+var shape = shapes.addGeometricShape("Rectangle", {
+  left: 100, top: 100, width: 200, height: 100
+});
+```
+
+Valid shape types (exact strings):
+- **Basic:** Rectangle, RoundRectangle, Triangle, RightTriangle, Diamond, Parallelogram, Trapezoid, Pentagon, Hexagon, Octagon
+- **Curved:** Ellipse, Donut, Arc, Pie, Chevron, HomePlate, Teardrop, BlockArc
+- **Arrows:** RightArrow, LeftArrow, UpArrow, DownArrow, LeftRightArrow, UpDownArrow, BentArrow, CurvedRightArrow, CurvedLeftArrow, CircularArrow, StripedRightArrow, NotchedRightArrow
+- **Callouts:** WedgeRectCallout, WedgeRRectCallout, WedgeEllipseCallout, CloudCallout, Cloud
+- **Flowchart:** FlowChartProcess, FlowChartDecision, FlowChartInputOutput, FlowChartDocument, FlowChartTerminator, FlowChartConnector, FlowChartAlternateProcess
+- **Brackets:** BracketPair, BracePair, LeftBracket, RightBracket, LeftBrace, RightBrace
+- **Stars:** Star4, Star5, Star6, Star8
+- **Other:** Plus, Frame, Funnel, Cube, Heart, LightningBolt
 
 ## Text Boxes & Lines
 
@@ -69,6 +188,47 @@ shape.textFrame.textRange.text = "Line 1\nLine 2\nLine 3";
 await context.sync();
 ```
 
+## Safe Text Frame Access
+
+Not all shapes have a text frame — tables, images, charts, grouped shapes throw `InvalidArgument` if you access `.textFrame` directly. **Always use `getTextFrameOrNullObject()`:**
+
+```javascript
+shapes.load("items/name,items/type,items/left,items/top,items/width,items/height");
+await context.sync();
+
+var textFrames = shapes.items.map(function(shape) {
+  var tf = shape.getTextFrameOrNullObject();
+  tf.load(["hasText"]);
+  return { shape: shape, tf: tf };
+});
+await context.sync();
+
+var textShapes = textFrames.filter(function(e) { return !e.tf.isNullObject; });
+```
+
+Never use `.textFrame` directly — use `getTextFrameOrNullObject()` and check `.isNullObject`.
+
+## Centering Text in Shapes
+
+When placing text inside a geometric shape (numbers in circles, labels in rectangles), put text in the shape's own `textFrame` — never create a separate `addTextBox`. Set ALL of these:
+
+```javascript
+shape.textFrame.textRange.text = "$";
+shape.textFrame.textRange.font.color = "#FFFFFF";
+shape.textFrame.textRange.font.size = 16;
+shape.textFrame.textRange.font.bold = true;
+shape.textFrame.textRange.paragraphFormat.alignment = "Center";
+shape.textFrame.verticalAlignment = "Middle";
+shape.textFrame.autoSizeSetting = "AutoSizeNone";
+shape.textFrame.wordWrap = false;
+shape.textFrame.marginLeft = 0;
+shape.textFrame.marginRight = 0;
+shape.textFrame.marginTop = 0;
+shape.textFrame.marginBottom = 0;
+```
+
+Missing any of these will cause off-center text. AutoSize options: `"AutoSizeShapeToFitText"` (shape expands to fit), `"AutoSizeTextToFitShape"` (text shrinks to fit), `"AutoSizeNone"` (fixed size).
+
 ## Fill & Color
 
 Only solid fills supported — no gradients, shadows, or effects.
@@ -95,10 +255,55 @@ await context.sync();
 ## Tables (API 1.8+)
 
 ```javascript
-// Add 4-row, 3-column table
-var table = shapes.addTable(4, 3);
+// Add table with values (every cell must be a string)
+var shape = shapes.addTable(3, 4, {
+  values: [
+    ["Name", "Q1", "Q2", "Q3"],
+    ["Alice", "100", "150", "120"],
+    ["Bob", "90", "110", "140"]
+  ],
+  left: 100, top: 150, width: 500, height: 150
+});
 await context.sync();
 ```
+
+### Formatting Cells
+
+```javascript
+var table = shape.getTable();
+for (var col = 0; col < 4; col++) {
+  var cell = table.getCellOrNullObject(0, col);
+  cell.fill.setSolidColor("#2F5496");
+  cell.font.color = "#FFFFFF";
+  cell.font.bold = true;
+  cell.font.size = 14;
+  cell.horizontalAlignment = "Center";
+  cell.verticalAlignment = "Middle";
+}
+await context.sync();
+```
+
+### Cell Properties
+
+- `cell.text` — get/set text
+- `cell.fill.setSolidColor(color)` — background
+- `cell.font.bold`, `.italic`, `.size`, `.color`, `.name` — font
+- `cell.horizontalAlignment` — "Left", "Center", "Right", "Justify"
+- `cell.verticalAlignment` — "Top", "Middle", "Bottom"
+
+### Merging, Rows, Columns
+
+- `table.mergeCells(rowIndex, colIndex, rowCount, colCount)`
+- `table.rows.add(index, count)` / `table.columns.add(index, count)`
+- `table.columns.getItemAt(i).width = 200` / `table.rows.getItemAt(i).height = 40`
+- Built-in styles: `"ThemedStyle1Accent1"` through `"ThemedStyle2Accent6"`, `"NoStyleTableGrid"`
+
+### Table Rules
+
+- Font minimum 14pt for all cells including headers
+- Row height: 28-32pt single-line, 48-56pt two-line. Set table height to match row estimates.
+- If any cell needs 3+ sentences or exceeds ~40 words — truncate, footnote, or split across slides
+- **Table height is auto-calculated** — setting `shape.height` or OOXML `<a:ext cy>` is overridden by PowerPoint. Fix overflow via `cell.font.size` + `row.height` through the table API, not XML or shape properties.
 
 ## Deck Overview
 
@@ -196,6 +401,146 @@ context.presentation.insertSlidesFromBase64(base64String, {
 await context.sync();
 ```
 
+## OOXML Text Editing
+
+Use the OOXML tools for fine-grained formatting control. Load the `/pptx` skill for OOXML structure knowledge. See [ooxml-reference.md](ooxml-reference.md) for the full live-editing reference (batching, units, gotchas).
+
+```
+// 1. Read current paragraphs (raw OOXML)
+read_slide_text(slideIndex: 0, shapeId: "2")
+// Returns: <a:p><a:r><a:rPr lang="en-US" b="1"/><a:t>Hello</a:t></a:r></a:p>
+
+// 2. Modify the XML (add color, change text, etc.)
+// 3. Write back
+edit_slide_text(slideIndex: 0, shapeId: "2", xml: '<a:p><a:r><a:rPr lang="en-US" b="1"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:rPr><a:t>Red Bold</a:t></a:r></a:p>')
+```
+
+For full slide or shape XML editing:
+
+```
+// Read full slide XML
+read_slide_xml(slideIndex: 0)
+
+// Read specific shape XML
+read_slide_xml(slideIndex: 0, shapeId: "5")
+
+// Replace a shape's XML
+edit_slide_xml(slideIndex: 0, shapeId: "5", xml: '<p:sp>...</p:sp>')
+
+// Replace full slide XML (batch multiple shapes in one reimport)
+edit_slide_xml(slideIndex: 0, xml: '<p:sld>...</p:sld>')
+```
+
+## Multi-File Zip Editing
+
+For charts, rels, Content_Types, or other zip entries beyond slide XML. See [ooxml-reference.md](ooxml-reference.md) for details.
+
+```
+// 1. Read all text/xml files from the slide zip (auto-discovers)
+read_slide_zip(slideIndex: 0)
+// Returns: { zipContents: { "ppt/slides/slide1.xml": "...", "[Content_Types].xml": "...", ... }, allPaths: [...] }
+
+// 2. Read specific files
+read_slide_zip(slideIndex: 0, paths: ["ppt/charts/chart1.xml", "ppt/slides/_rels/slide1.xml.rels"])
+
+// 3. Update multiple files in one reimport
+edit_slide_zip(slideIndex: 0, files: {
+  "ppt/slides/slide1.xml": "<p:sld>...modified...</p:sld>",
+  "ppt/charts/chart1.xml": "<c:chartSpace>...</c:chartSpace>"
+})
+// Auto-registers Content_Types for new chart files
+```
+
+## Duplicating Slides
+
+```
+// Duplicate slide 2 right after itself
+duplicate_slide(slideIndex: 2)
+
+// Duplicate slide 0, insert after slide 4
+duplicate_slide(slideIndex: 0, insertAfter: 4)
+```
+
+## Charts (Declarative)
+
+Use `edit_slide_chart` for automatic chart creation from structured data — no OOXML knowledge needed:
+
+```
+// Column chart
+edit_slide_chart(
+  slideIndex: 0,
+  chartType: "column",
+  title: "Revenue by Quarter",
+  categories: ["Q1", "Q2", "Q3", "Q4"],
+  series: [
+    { name: "2024", values: [100, 150, 120, 180] },
+    { name: "2025", values: [130, 170, 140, 200] }
+  ]
+)
+
+// Pie chart
+edit_slide_chart(
+  slideIndex: 1,
+  chartType: "pie",
+  title: "Market Share",
+  categories: ["Product A", "Product B", "Other"],
+  series: [{ name: "Share", values: [45, 35, 20] }]
+)
+
+// Stacked bar with custom position
+edit_slide_chart(
+  slideIndex: 2,
+  chartType: "bar",
+  title: "Team Capacity",
+  categories: ["Dev", "Design", "QA"],
+  series: [
+    { name: "Allocated", values: [80, 60, 40] },
+    { name: "Available", values: [20, 40, 60] }
+  ],
+  position: { left: 100, top: 120, width: 500, height: 350 },
+  options: { stacked: true, legendPosition: "b" }
+)
+```
+
+Supported chart types: `column`, `bar`, `line`, `pie`, `doughnut`, `area`. For advanced chart customization beyond what `edit_slide_chart` supports, use `edit_slide_zip` with raw OOXML (see [ooxml-reference.md](ooxml-reference.md)).
+
+## Verifying Slides
+
+```
+// Run all checks (overlap, bounds, empty_text, tiny_shapes)
+verify_slides(slideIndex: 0)
+
+// Run specific checks only
+verify_slides(slideIndex: 0, checks: ["overlap", "bounds"])
+
+// Returns: { slideIndex, shapeCount, issueCount, issues: [{ check, severity, shapes, message }] }
+```
+
+### Full Verification Loop
+
+After completing work, verify ALL modified slides:
+
+**Note on intentional overlaps:** Card layouts (TextBoxes + icons inside RoundedRectangles) and full-width decorative lines will always produce overlap warnings in `verify_slides`. These are expected — only act on overlaps between shapes that shouldn't be layered, or on overflow (shapes going off-slide). For large decks, run structural `verify_slides` on all slides but only visually verify the 4-5 most complex ones via subagent.
+
+1. **Auto-size first:** If you edited text, set `autoSizeSetting = "AutoSizeShapeToFitText"` on those shapes — otherwise `verify_slides` sees stale dimensions:
+
+```javascript
+var shape = slides.items[0].shapes.getItem("28");
+shape.textFrame.autoSizeSetting = "AutoSizeShapeToFitText";
+await context.sync();
+```
+
+2. **Structural check:** `verify_slides(slideIndex)` — overlap, bounds, empty text, tiny shapes
+3. **Visual check:** Spawn a subagent for independent visual review. The subagent has no conversation context, providing an objective check. Use this prompt (replace N with slide index):
+
+> Call get_slide_image(slideIndex: N) to capture the slide, then review it for: text overflow or truncation, overlapping shapes or text, unreadable text (too small, poor contrast), misalignment or inconsistent spacing, empty or unused space, inconsistent styling (mixed fonts, colors, sizes). Return a JSON array of issues found, each with: severity (error/warning/info), category, description, and suggestion. If no issues found, return [].
+
+4. **Fix and re-verify** until clean.
+
+If overlaps/overflow found: shorten text, reduce font, reposition body content (not title), or split across slides.
+
+Rules for visual review: never mention "the reviewer" to user — speak in first person ("I noticed..." not "The reviewer found..."). Only use for checking completed work, not initial inspection.
+
 ## Reading Content
 
 ```javascript
@@ -220,6 +565,131 @@ return texts;
 context.presentation.properties.custom.add("status", "draft");
 await context.sync();
 ```
+
+## Slide Backgrounds
+
+```javascript
+// NO # prefix — bare hex
+slide.background.fill.setSolidFill({ color: "1A1A1E" });
+```
+
+Layout backgrounds:
+```javascript
+var masters = context.presentation.slideMasters;
+masters.load("items");
+await context.sync();
+var slideMaster = masters.items[masters.items.length - 1];
+var layouts = slideMaster.layouts;
+layouts.load("items");
+await context.sync();
+for (var i = 0; i < layouts.items.length; i++) {
+  layouts.items[i].background.fill.setSolidFill({ color: "355834" });
+}
+await context.sync();
+```
+
+## Shape Layering (Z-Order)
+
+```javascript
+shape.setZOrder("BringToFront"); // or "BringForward", "SendBackward", "SendToBack"
+```
+
+## Icons
+
+Workflow: `search_icons` → `insert_icon`
+
+```
+search_icons(query: "warning", top: 5)
+// Returns: [{ id, description, isMono, contentTier, searchScore }]
+
+insert_icon(iconId: "Icons_Warning", slideIndex: 0, x: 100, y: 100, width: 48, height: 48, color: "#FF5733")
+```
+
+**Variants:** filled (`isMono: false`, e.g. `Icons_Dog`) = colorful. Mono (`isMono: true`, e.g. `Icons_Dog_M`) = clean line-art. Prefer mono (`_M`) variants for professional decks — they're cleaner and recolorable.
+
+**Sizing:** 36-48pt inline next to text, 72pt default, 72-144pt decorative hero.
+
+**Coloring:** Pass `color` hex to `insert_icon`. Do NOT use `shape.fill.setSolidColor()` — that sets shape background, not SVG paths. To recolor existing icons: use `edit_slide_xml` to modify SVG, inject `<style>.iconFill{fill:#HEX;}</style>` after opening `<svg>` tag.
+
+**Parallel operations:** When placing icons on multiple cards, search for ALL icons in parallel (multiple `search_icons` calls at once), then insert ALL icons in parallel (multiple `insert_icon` calls at once). This is significantly faster than sequential one-at-a-time operations.
+
+**Retry with alternative keywords:** If `search_icons` returns no good matches, retry with synonyms or related concepts:
+- Abstract concepts → concrete objects: "innovation" → "lightbulb", "opinionated" → "compass", "security" → "shield"
+- Actions → objects: "assessment" → "clipboard", "collaboration" → "handshake", "engineering" → "wrench"
+- Compound concepts → simpler: "no lock-in" → "unlock", "faster delivery" → "rocket"
+
+**Fallbacks** (if search returns nothing): geometric shape (filled circle + symbolic shape on top), or circle with single character in textFrame. Never use emoji or Unicode symbols.
+
+## Slide Master & Theming
+
+`edit_slide_master` receives `{ zip, markDirty }` — zip contains the full PPTX structure.
+
+**Key files:**
+- `ppt/slideMasters/slideMaster1.xml` — master shapes, background, text styles
+- `ppt/slideLayouts/slideLayout1.xml` through `slideLayoutN.xml` — per-layout overrides
+- `ppt/theme/theme1.xml` — theme colors, fonts, effects
+
+Always: read → parse (DOMParser) → modify → serialize (XMLSerializer) → write. Never string concatenation.
+
+### Setting Theme Colors
+
+In `ppt/theme/theme1.xml`, find `<a:clrScheme>` and update:
+- `<a:dk1>` — primary text (must contrast lt1)
+- `<a:lt1>` — primary background (must contrast dk1)
+- `<a:dk2>`, `<a:lt2>` — secondary dark/light
+- `<a:accent1>` through `<a:accent6>` — accent palette
+
+```javascript
+function setColor(doc, parent, tagName, hex) {
+  var el = parent.getElementsByTagName(tagName)[0];
+  if (!el) return;
+  while (el.firstChild) el.removeChild(el.firstChild);
+  var clr = doc.createElementNS("http://schemas.openxmlformats.org/drawingml/2006/main", "a:srgbClr");
+  clr.setAttribute("val", hex);
+  el.appendChild(clr);
+}
+```
+
+### Setting Theme Fonts
+
+Find `<a:majorFont>` and `<a:minorFont>` inside `<a:fontScheme>`, update `<a:latin typeface="...">`.
+
+### Setting Master Background
+
+`<p:bg>` must be first child of `<p:cSld>` (before `<p:spTree>`) — use `insertBefore`:
+
+```javascript
+var cSld = masterDoc.getElementsByTagName("p:cSld")[0];
+var bg = cSld.getElementsByTagName("p:bg")[0];
+if (bg) cSld.removeChild(bg);
+var fragment = new DOMParser().parseFromString(
+  '<p:bg xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:bgPr><a:solidFill><a:srgbClr val="F5F0EB"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>', "text/xml").documentElement;
+var imported = masterDoc.importNode(fragment, true);
+var spTree = cSld.getElementsByTagName("p:spTree")[0];
+cSld.insertBefore(imported, spTree);
+```
+
+### Setting Default Text Colors
+
+Modify existing `<p:txStyles>` in slideMaster1.xml (find and modify — do NOT add new):
+
+```javascript
+var txStyles = masterDoc.getElementsByTagName("p:txStyles")[0];
+var titleStyle = txStyles.getElementsByTagName("p:titleStyle")[0];
+var titleDefRPr = titleStyle.getElementsByTagName("a:defRPr")[0];
+var titleFill = titleDefRPr.getElementsByTagName("a:solidFill")[0];
+if (!titleFill) {
+  titleFill = masterDoc.createElementNS("http://schemas.openxmlformats.org/drawingml/2006/main", "a:solidFill");
+  titleDefRPr.insertBefore(titleFill, titleDefRPr.firstChild);
+}
+while (titleFill.firstChild) titleFill.removeChild(titleFill.firstChild);
+var titleClr = masterDoc.createElementNS("http://schemas.openxmlformats.org/drawingml/2006/main", "a:srgbClr");
+titleClr.setAttribute("val", "FFFFFF");
+titleFill.appendChild(titleClr);
+// Repeat for bodyStyle
+```
+
+Critical: preserve element ordering. Find and modify existing elements — never add duplicates.
 
 ## Units & Positioning
 
