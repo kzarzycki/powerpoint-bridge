@@ -6,6 +6,7 @@ import { DOMParser } from '@xmldom/xmldom'
 import { z } from 'zod'
 import type { ConnectionPool } from './bridge.ts'
 import { buildChartRelationship, buildChartXml, buildGraphicFrame, resolveChartPosition } from './chart-builder.ts'
+import { fetchIconSvg, searchIcons } from './icons.ts'
 import {
   autoRegisterContentTypes,
   escapeXml,
@@ -1826,6 +1827,108 @@ return { success: true, shapesFormatted: ${shapes.length} };`
         const result = await pool.sendCommand('executeCode', { code }, target.ws)
         const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
         const text = JSON.stringify(result ?? { success: true }, null, 2) + (warning ?? '')
+        return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: search_icons ---
+  server.tool(
+    'search_icons',
+    'Search Microsoft Fluent UI icon library. Returns matching icons with IDs for use with insert_icon. Prefer mono (_M) variants for professional decks. Retry with synonyms if no good matches (e.g. "innovation" → "lightbulb", "security" → "shield").',
+    {
+      query: z.string().describe('Search query (e.g. "warning", "arrow down", "lightbulb")'),
+      top: z.number().int().min(1).max(50).optional().describe('Max results to return (default 10)'),
+      style: z
+        .enum(['regular', 'filled'])
+        .optional()
+        .describe('Filter by style: "regular" for mono/outline icons, "filled" for solid icons. Omit for both.'),
+    },
+    async ({ query, top, style }) => {
+      try {
+        const results = await searchIcons(query, top ?? 10, style)
+        return { content: [{ type: 'text' as const, text: JSON.stringify(results, null, 2) }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: insert_icon ---
+  server.tool(
+    'insert_icon',
+    'Insert a Fluent UI icon onto a slide. Fetches SVG from CDN, optionally recolors it, and inserts via Office.js. Use search_icons first to find the icon ID. Pass color as hex to tint mono icons.',
+    {
+      iconId: z
+        .string()
+        .describe('Icon ID from search_icons (e.g. "Icons_Warning_M" for mono, "Icons_Warning" for filled)'),
+      slideIndex: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe('Zero-based slide index. If omitted, inserts on the currently active slide.'),
+      x: z.number().optional().describe('Horizontal position in points (1 point = 1/72 inch)'),
+      y: z.number().optional().describe('Vertical position in points'),
+      width: z.number().optional().describe('Icon width in points (default 72)'),
+      height: z.number().optional().describe('Icon height in points (default 72)'),
+      color: z
+        .string()
+        .optional()
+        .describe('Hex color to tint the icon (e.g. "#FF5733"). Works best with mono (_M) icons.'),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ iconId, slideIndex, x, y, width, height, color, presentationId }) => {
+      try {
+        // Step 1: Fetch and recolor SVG
+        const base64Data = await fetchIconSvg(iconId, color)
+
+        // Step 2: Build options object string with only provided params
+        const optionsParts: string[] = ['coercionType: Office.CoercionType.Image']
+        if (x !== undefined) optionsParts.push(`imageLeft: ${x}`)
+        if (y !== undefined) optionsParts.push(`imageTop: ${y}`)
+        if (width !== undefined) optionsParts.push(`imageWidth: ${width}`)
+        if (height !== undefined) optionsParts.push(`imageHeight: ${height}`)
+        const optionsStr = `{ ${optionsParts.join(', ')} }`
+
+        // Step 3: Build the setSelectedDataAsync call
+        const insertCall = `Office.context.document.setSelectedDataAsync("${base64Data}", ${optionsStr}, function(result) {
+        if (result.status === Office.AsyncResultStatus.Succeeded) {
+          resolve({ success: true });
+        } else {
+          reject(new Error(result.error.message));
+        }
+      });`
+
+        // Step 4: Wrap with goToByIdAsync if slideIndex is provided
+        let code: string
+        if (slideIndex !== undefined) {
+          code = `return new Promise(function(resolve, reject) {
+      Office.context.document.goToByIdAsync(${slideIndex + 1}, Office.GoToType.Index, function(navResult) {
+        if (navResult.status !== Office.AsyncResultStatus.Succeeded) {
+          reject(new Error("Navigation failed: " + navResult.error.message));
+          return;
+        }
+        ${insertCall}
+      });
+    });`
+        } else {
+          code = `return new Promise(function(resolve, reject) {
+      ${insertCall}
+    });`
+        }
+
+        const target = pool.resolveTarget(presentationId)
+        const result = await pool.sendCommand('executeCode', { code }, target.ws)
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
+        const text = JSON.stringify(result ?? { success: true, iconId }, null, 2) + (warning ?? '')
         return { content: [{ type: 'text' as const, text }] }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)

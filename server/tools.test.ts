@@ -95,6 +95,7 @@ describe('MCP Tools', () => {
       'execute_officejs',
       'format_shapes',
       'get_local_copy',
+      'insert_icon',
       'insert_image',
       'inspect_slide',
       'list_presentations',
@@ -105,6 +106,7 @@ describe('MCP Tools', () => {
       'read_slide_zip',
       'scan_slide',
       'screenshot_slide',
+      'search_icons',
       'search_text',
       'verify_slides',
     ])
