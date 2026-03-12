@@ -60,6 +60,7 @@ For tool reference, code patterns, and usage — see the **powerpoint-live** ski
 ### Branch & PR
 - Create a feature branch: `<type>/<short-description>` (e.g. `fix/tcc-sideload-prompt`, `feat/new-tool`)
 - PR title must follow Conventional Commits — CI enforces this and auto-labels (`feat`→enhancement, `fix`→bug, etc.)
+- After pushing, always wait for CI checks to pass before confirming the PR is ready
 - Squash merge PRs to keep main history clean
 - Delete feature branch after merge
 
