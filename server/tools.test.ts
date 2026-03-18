@@ -81,7 +81,7 @@ describe('MCP Tools', () => {
     pool = new ConnectionPool(100)
   })
 
-  it('lists all 18 tools', async () => {
+  it('lists all 19 tools', async () => {
     const { client } = await setupMcpClient(pool)
     const result = await client.listTools()
     const names = result.tools.map((t) => t.name).sort()
@@ -103,6 +103,7 @@ describe('MCP Tools', () => {
       'read_slide_text',
       'read_slide_xml',
       'read_slide_zip',
+      'search_text',
       'verify_slides',
     ])
   })
@@ -1867,6 +1868,391 @@ describe('MCP Tools', () => {
       const result = await toolPromise
       const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
       expect(parsed.chartFile).toBe('ppt/charts/chart2.xml')
+    })
+  })
+
+  describe('search_text', () => {
+    it('searches all slides and returns shape-level matches by default', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: '/path/test.pptx',
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'budget' },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.action).toBe('executeCode')
+      expect(sent.params.code).toContain('budget')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'budget',
+        caseSensitive: false,
+        regex: false,
+        totalSlides: 5,
+        matches: [
+          {
+            slideIndex: 1,
+            shapeId: '42',
+            shapeName: 'TextBox 3',
+            source: 'shape',
+            text: 'The budget for Q3 is $1.2M',
+          },
+          {
+            slideIndex: 3,
+            shapeId: '78',
+            shapeName: 'Content Placeholder',
+            source: 'shape',
+            text: 'Budget allocation overview',
+          },
+        ],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.query).toBe('budget')
+      expect(parsed.matches).toHaveLength(2)
+      expect(parsed.matches[0].slideIndex).toBe(1)
+      expect(parsed.matches[0].shapeId).toBe('42')
+      expect(parsed.matches[0].source).toBe('shape')
+      expect(parsed.matches[1].slideIndex).toBe(3)
+    })
+
+    it('searches specific slide range when slideRange is provided', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'hello', slideRange: '2-4' },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.params.code).toContain('2-4')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'hello',
+        caseSensitive: false,
+        regex: false,
+        totalSlides: 10,
+        matches: [],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.matches).toHaveLength(0)
+    })
+
+    it('supports case-sensitive search', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'Budget', caseSensitive: true },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.params.code).toContain('caseSensitive = true')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'Budget',
+        caseSensitive: true,
+        regex: false,
+        totalSlides: 5,
+        matches: [
+          {
+            slideIndex: 3,
+            shapeId: '78',
+            shapeName: 'Title',
+            source: 'shape',
+            text: 'Budget allocation overview',
+          },
+        ],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.caseSensitive).toBe(true)
+      expect(parsed.matches).toHaveLength(1)
+    })
+
+    it('enables regex matching when regex=true', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: '\\d+%', regex: true },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.params.code).toContain('useRegex = true')
+      expect(sent.params.code).toContain('new RegExp')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: '\\d+%',
+        caseSensitive: false,
+        regex: true,
+        totalSlides: 5,
+        matches: [
+          {
+            slideIndex: 2,
+            shapeId: '10',
+            shapeName: 'Body',
+            source: 'shape',
+            text: 'Revenue grew 42% YoY',
+          },
+        ],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.regex).toBe(true)
+      expect(parsed.matches).toHaveLength(1)
+    })
+
+    it('returns slide-level context with all shapes when context="slide"', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'budget', context: 'slide' },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.params.code).toContain('"slide"')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'budget',
+        caseSensitive: false,
+        regex: false,
+        totalSlides: 5,
+        matches: [
+          {
+            slideIndex: 1,
+            shapes: [
+              { shapeId: '2', shapeName: 'Title', matched: false, text: 'Q3 Overview' },
+              { shapeId: '4', shapeName: 'Body', matched: true, text: 'The budget is $1.2M' },
+              { shapeId: '7', shapeName: 'Footer', matched: false, text: 'Page 2' },
+            ],
+          },
+        ],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.matches).toHaveLength(1)
+      expect(parsed.matches[0].slideIndex).toBe(1)
+      expect(parsed.matches[0].shapes).toHaveLength(3)
+      expect(parsed.matches[0].shapes[0].matched).toBe(false)
+      expect(parsed.matches[0].shapes[1].matched).toBe(true)
+    })
+
+    it('returns only slide indices when context="none"', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'AI', context: 'none' },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.params.code).toContain('"none"')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'AI',
+        caseSensitive: false,
+        regex: false,
+        totalSlides: 10,
+        matchingSlides: [0, 1, 3, 5, 7],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.matchingSlides).toEqual([0, 1, 3, 5, 7])
+      expect(parsed.matches).toBeUndefined()
+    })
+
+    it('includes speaker notes matches when includeNotes is true', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'reminder' },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.params.code).toContain('searchNotes = true')
+      expect(sent.params.code).toContain('notesSlide')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'reminder',
+        caseSensitive: false,
+        regex: false,
+        totalSlides: 5,
+        matches: [
+          {
+            slideIndex: 2,
+            source: 'note',
+            text: 'Reminder: mention the Q3 deadline',
+          },
+        ],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.matches).toHaveLength(1)
+      expect(parsed.matches[0].source).toBe('note')
+      expect(parsed.matches[0].slideIndex).toBe(2)
+    })
+
+    it('skips notes search when includeNotes is false', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'test', includeNotes: false },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.params.code).toContain('searchNotes = false')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'test',
+        caseSensitive: false,
+        regex: false,
+        totalSlides: 5,
+        matches: [],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.matches).toHaveLength(0)
+    })
+
+    it('includes table cell matches with row/col info', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'revenue' },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.params.code).toContain('Table')
+      expect(sent.params.code).toContain('getCell')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'revenue',
+        caseSensitive: false,
+        regex: false,
+        totalSlides: 5,
+        matches: [
+          {
+            slideIndex: 4,
+            shapeId: '20',
+            shapeName: 'Table 1',
+            source: 'tableCell',
+            text: 'Total revenue: $5M',
+            row: 2,
+            col: 1,
+          },
+        ],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.matches).toHaveLength(1)
+      expect(parsed.matches[0].source).toBe('tableCell')
+      expect(parsed.matches[0].row).toBe(2)
+      expect(parsed.matches[0].col).toBe(1)
     })
   })
 })
