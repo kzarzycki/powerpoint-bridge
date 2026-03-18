@@ -297,6 +297,19 @@ await context.sync();
 - `table.rows.add(index, count)` / `table.columns.add(index, count)`
 - `table.columns.getItemAt(i).width = 200` / `table.rows.getItemAt(i).height = 40`
 - Built-in styles: `"ThemedStyle1Accent1"` through `"ThemedStyle2Accent6"`, `"NoStyleTableGrid"`
+- **Style is creation-time only** — the `style` property must be passed in `addTable()` options at creation time. It cannot be applied after the table exists:
+
+```javascript
+// Correct — style at creation time
+var shape = shapes.addTable(3, 4, {
+  values: [["A", "B", "C", "D"], ["1", "2", "3", "4"], ["5", "6", "7", "8"]],
+  left: 80, top: 120, width: 800, height: 200,
+  style: "ThemedStyle1Accent2"
+});
+
+// Wrong — there is no table.style property after creation
+// table.style = "ThemedStyle1Accent2"; // does not exist in the API
+```
 
 ### Table Rules
 
@@ -568,12 +581,22 @@ await context.sync();
 
 ## Slide Backgrounds
 
+Three distinct background-setting patterns — choose based on scope:
+
+### Pattern 1: Single Slide Background
+Sets background on one individual slide only. Use for slides that need a unique background.
+
 ```javascript
 // NO # prefix — bare hex
 slide.background.fill.setSolidFill({ color: "1A1A1E" });
 ```
 
-Layout backgrounds:
+### Pattern 2: Master Background via OOXML
+Sets background for all slides via the slide master. Use in `edit_slide_master` for blank decks when establishing a theme. See the [Slide Master & Theming](#slide-master--theming) section above.
+
+### Pattern 3: Layout Loop
+Sets background on all layouts, propagating to any slide using those layouts. Use when you want all layouts to share a background but don't want to modify the master directly.
+
 ```javascript
 var masters = context.presentation.slideMasters;
 masters.load("items");
@@ -624,6 +647,11 @@ insert_icon(iconId: "Icons_Warning", slideIndex: 0, x: 100, y: 100, width: 48, h
 
 `edit_slide_master` receives `{ zip, markDirty }` — zip contains the full PPTX structure.
 
+**When to call `edit_slide_master`:**
+- Blank deck (default theme, no content) — MUST call first to establish theme
+- Custom-styled deck (default theme, has content) — do NOT call; existing slides define the style
+- Template/existing (non-default theme) — do NOT call unless user explicitly confirms a redesign
+
 **Key files:**
 - `ppt/slideMasters/slideMaster1.xml` — master shapes, background, text styles
 - `ppt/slideLayouts/slideLayout1.xml` through `slideLayoutN.xml` — per-layout overrides
@@ -652,7 +680,12 @@ function setColor(doc, parent, tagName, hex) {
 
 ### Setting Theme Fonts
 
-Find `<a:majorFont>` and `<a:minorFont>` inside `<a:fontScheme>`, update `<a:latin typeface="...">`.
+Find `<a:majorFont>` and `<a:minorFont>` inside `<a:fontScheme>`, update `<a:latin typeface="...">`. Choose distinctive pairs — avoid defaulting to Calibri for both.
+
+**Recommended font pairs** (heading + body):
+- Montserrat + Lora
+- Raleway + Open Sans
+- Playfair Display + Source Sans Pro
 
 ### Setting Master Background
 
@@ -668,6 +701,23 @@ var imported = masterDoc.importNode(fragment, true);
 var spTree = cSld.getElementsByTagName("p:spTree")[0];
 cSld.insertBefore(imported, spTree);
 ```
+
+For a gradient background, replace `a:solidFill` with `a:gradFill`:
+
+```xml
+<p:bgPr>
+  <a:gradFill>
+    <a:gsLst>
+      <a:gs pos="0"><a:srgbClr val="1A1A2E"/></a:gs>
+      <a:gs pos="100000"><a:srgbClr val="16213E"/></a:gs>
+    </a:gsLst>
+    <a:lin ang="5400000" scaled="1"/>
+  </a:gradFill>
+  <a:effectLst/>
+</p:bgPr>
+```
+
+`pos` is in thousandths of a percent (0 = start, 100000 = end). `ang` is in 60,000ths of a degree (5400000 = 90 degrees, top to bottom).
 
 ### Setting Default Text Colors
 
@@ -690,6 +740,18 @@ titleFill.appendChild(titleClr);
 ```
 
 Critical: preserve element ordering. Find and modify existing elements — never add duplicates.
+
+### Adding Decorative Shapes to Master
+
+Append `p:sp` elements to `p:spTree` in slideMaster1.xml. Parse with DOMParser, import with `masterDoc.importNode(fragment, true)`, then `spTree.appendChild(imported)`.
+
+For blank decks, always add at least one branding or decorative shape: accent bar along the bottom or side edge, thin divider line separating a header area, or subtle geometric shape as a background accent.
+
+### Theming Rules
+
+- NEVER override font colors on individual slides — all text should inherit from the master/theme
+- NEVER add recurring visual elements (backgrounds, accent lines, decorative shapes, branding) to individual slides — they belong on the master or layout only
+- Palette diversity: don't default to dark backgrounds. Light, warm, pastel, earthy, vibrant, and muted palettes are all valid. Match the tone of the content.
 
 ## Units & Positioning
 

@@ -44,11 +44,78 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 
 All positioning values from `get_slide` are in **points** (1 pt = 1/72 inch). Standard 16:9 slide: 960 x 540 pt.
 
+### Tool Return Values
+
+Key return formats to know:
+
+- **`list_slide_shapes`** returns `[{ id, name, type, left, top, width, height }]` — `id` is a stable numeric string (use this for read/edit tools); `name` is locale-dependent (never use as selector); `type` is one of "GeometricShape", "TextBox", "Table", "Chart", "Picture", "Group"
+- **`verify_slides`** returns `{ slideIndex, issues: [{ type, description, shapeIds }] }` — `type` is "overlap", "out_of_bounds", or "unused_placeholder"; `shapeIds` are stable IDs
+- **`search_icons`** returns `[{ id, description, isMono, contentTier, searchScore }]` — `isMono: false` = filled/colorful, `isMono: true` = outline/mono; pick highest `searchScore` matching intent
+- **`read_slide_text`** returns raw OOXML `<a:p>` paragraph elements (does NOT include `<a:bodyPr>` or `<a:lstStyle>`)
+- **`read_slide_zip`** returns `{ zipContents: { path: content }, allPaths: [...] }`
+
+### Tool Behavior Notes
+
+| Tool | Key non-obvious behavior |
+|------|--------------------------|
+| `edit_slide_text` | The `xml` field takes raw OOXML paragraph XML, not executable code. Preserves `<a:bodyPr>` and `<a:lstStyle>` automatically. Must auto-size shapes after edit. |
+| `edit_slide_xml` | Exported slide is ALWAYS `ppt/slides/slide1.xml` in the zip regardless of `slideIndex`. |
+| `edit_slide_master` | The `zip` contains the full PPTX structure (not a single slide). `p:bg` must be first child of `p:cSld`. |
+| `verify_slides` | Must auto-size shapes first or stale dimensions cause missed overlaps. Table overflow needs API fix, not OOXML. |
+| `insert_icon` | `noChangeAspect` is locked (can't stretch). `color` requires `#` prefix: `"#FF5733"`. Do NOT use `shape.fill.setSolidColor()` for icons. |
+| `execute_officejs` | Loaded values are snapshots — don't branch on stale reads after writes without re-load + re-sync. |
+
+### OOXML sz Units (hundredths of a point)
+
+| sz value | Point size | Use |
+|----------|-----------|-----|
+| `1400` | 14pt | Body minimum |
+| `1600` | 16pt | Preferred body |
+| `2000` | 20pt | Subheading |
+| `2800` | 28pt | Section header |
+| `3600` | 36pt | Slide title |
+| `4400` | 44pt | Large title |
+
+## Deck Type Detection
+
+Before editing, determine the deck type. This determines the entire approach.
+
+### Case 1: Blank Deck
+**Detection:** `get_presentation` shows only default slides, `get_slide` shows no custom content or colors.
+
+Use `edit_slide_master` FIRST to set up a complete theme before adding any slides. Do ALL of the following in a single `edit_slide_master` call:
+1. **Theme colors** — set the full `a:clrScheme`: dk1, dk2, lt1, lt2, and all six accents. Pick a cohesive palette suited to the topic and audience.
+2. **Theme fonts** — choose a heading font (`a:majorFont`) and body font (`a:minorFont`) that pair well. Avoid Calibri for both.
+3. **Master background** — set `p:bg` on the slide master.
+4. **Default text colors** — update `p:txStyles` (title and body default text) so text contrasts the background. NEVER override font colors on individual slides.
+5. **Decorative elements** — add at least one branding or decorative shape to the master (accent bar, divider line, subtle shape).
+
+**Palette diversity rule:** Do NOT default to dark backgrounds. Light, warm, pastel, earthy, vibrant, and muted palettes are all valid choices. Match the tone of the content.
+
+### Case 2: Custom-Styled Deck (Default Master)
+**Detection:** `get_presentation` shows default theme but `get_slide` reveals custom colors, fonts, and shapes on existing slides.
+
+Do NOT create or modify the slide master. The existing slides ARE the design system.
+- Before adding new slides, READ existing slides to extract visual style: background colors, font names, sizes, text colors, accent colors, shape styles.
+- Pick the most representative slide as your style reference. Match its look exactly.
+- Apply colors and fonts explicitly per-slide to match existing slides, since the master has no custom styles to inherit from.
+
+### Case 3: Template or Existing Presentation
+**Detection:** `get_presentation` shows a non-default theme.
+
+Default to PRESERVING the existing theme. New slides and additions should blend with existing colors, fonts, and layouts.
+
+If the user requests a restyle or redesign — STOP before making edits:
+1. Briefly describe the current template (master name, what it looks like).
+2. Ask whether to (a) keep the current template and polish content within it, or (b) replace it with a new design.
+3. Wait for the user's answer before proceeding.
+
 ## Workflow
 
 1. **Discover**: `list_presentations` — find connected presentations
 2. **Audit**: Check existing state — slide count, available layouts, which slides already have content. Use `get_deck_overview` for a visual overview, or `get_presentation` then `get_slide` per slide. This is essential for resuming partial builds or modifying existing decks.
 3. **Find**: `search_text` — grep for slides. Searches shapes, tables, and speaker notes. Use `context: "none"` for just slide indices, `"shape"` (default) for matching shapes, or `"slide"` for full slide context with all shapes. Supports regex.
+4. **Detect deck type**: Determine blank / custom-styled / template (see above) — this decides whether to apply a theme first.
 4. **See**: `get_slide_image` — visually inspect specific slides
 5. **Modify**: `execute_officejs` — build entire slides in a single call (all shapes, text, connectors, accents at once) for efficiency and to avoid mid-build visual flashing
 6. **Verify**: full verification loop (see below)
@@ -61,10 +128,20 @@ After completing work on a slide:
 
 1. **Auto-size first**: set `autoSizeSetting = "AutoSizeShapeToFitText"` on edited text shapes via `execute_officejs` — otherwise `verify_slides` sees stale dimensions
 2. **Structural check**: `verify_slides` — overlap, bounds, empty text, tiny shapes
-3. **Visual check**: spawn a subagent for independent visual review (see below)
-4. **Fix issues** and re-verify until clean
+3. **Text contrast check**: verify font color (set in the master's `p:txStyles`) contrasts the slide background. Flag and fix any per-shape color override that reduces legibility.
+4. **Visual check**: spawn a subagent for independent visual review (see below)
+5. **Fix issues** and re-verify until clean
+
+Do NOT declare success until you have completed at least one fix-and-verify cycle.
 
 If overlaps/overflow: shorten text, reduce font, reposition body content (not title), or split across slides.
+
+**Manual checklist** (verify before declaring done):
+- All placeholder shapes either filled with content or deleted
+- Text color contrasts slide background on every shape
+- No unused images or stale shapes from previous slide versions
+- No shape text below 14pt
+- All shapes have explicit `left` + `top` set
 
 **Intentional overlaps**: When using card patterns (TextBoxes + icons inside RoundedRectangles), `verify_slides` will report many overlaps — these are expected by design. Also, decorative HR lines spanning the full width will overlap with adjacent elements. Only act on overlaps between shapes that should NOT be layered, or on overflow (shapes going off-slide).
 
@@ -103,9 +180,9 @@ Cannot do via Office.js — do not attempt:
 
 - Insert images with precise shape-level control (use `insert_image` tool — positions via Common API, not shape API)
 - Add animations or transitions
-- Apply gradients, shadows, or effects (solid fills only)
+- Apply shadows or effects via Office.js (solid fills only via Office.js; gradients possible via OOXML `a:gradFill` in `edit_slide_master`)
 
-For charts, use `edit_slide_chart` (declarative) or `edit_slide_zip` (raw OOXML). For slide masters/themes, use `execute_officejs` for backgrounds or `get_local_copy` + python-pptx for full theme editing.
+For charts, use `edit_slide_chart` (declarative) or `edit_slide_zip` (raw OOXML). Never approximate charts with geometric shapes. For slide masters/themes, use `edit_slide_master` for full theme editing (colors, fonts, backgrounds, decorative shapes).
 
 ## Content & Design Rules
 
