@@ -1328,30 +1328,74 @@ export function registerTools(
   // --- Tool: search_text ---
   server.tool(
     'search_text',
-    'Search for text across all slides (or a slide range) in the presentation. Returns matching slide indices, shape IDs, shape names, and the full text of each matching shape. Case-insensitive by default. Use this to find where specific content appears before editing.',
+    'Search for text across all slides (or a slide range) in the presentation — like grep for slides. Searches shape text, table cells, and speaker notes. Returns matching shapes with context at the chosen level. Case-insensitive substring by default; supports regex.',
     {
-      query: z.string().describe('Text to search for (plain substring match)'),
+      query: z.string().describe('Text to search for. Plain substring by default, or a regex pattern when regex=true.'),
       slideRange: z
         .string()
         .optional()
         .describe('Optional slide range to search, e.g. "0-4" or "2-7". Zero-based. Omit to search all slides.'),
-      caseSensitive: z
+      caseSensitive: z.boolean().optional().describe('Case-sensitive search. Default: false.'),
+      regex: z.boolean().optional().describe('Treat query as a regular expression. Default: false (plain substring).'),
+      context: z
+        .enum(['shape', 'slide', 'none'])
+        .optional()
+        .describe(
+          'Result detail level. "shape" (default): matching shapes with text. "slide": all shapes on matching slides with matched markers. "none": just matching slide indices.',
+        ),
+      includeNotes: z
         .boolean()
         .optional()
-        .describe('Whether the search is case-sensitive. Default: false (case-insensitive).'),
+        .describe('Search speaker notes in addition to slide content. Default: true.'),
       presentationId: z
         .string()
         .optional()
         .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
     },
-    async ({ query, slideRange, caseSensitive, presentationId }) => {
+    async ({ query, slideRange, caseSensitive, regex, context: contextLevel, includeNotes, presentationId }) => {
       try {
         const cs = caseSensitive === true
+        const useRegex = regex === true
+        const ctxLevel = contextLevel ?? 'shape'
+        const searchNotes = includeNotes !== false
         const escapedQuery = JSON.stringify(query)
         const code = `
           var caseSensitive = ${cs};
+          var useRegex = ${useRegex};
           var query = ${escapedQuery};
+          var ctxLevel = ${JSON.stringify(ctxLevel)};
+          var searchNotes = ${searchNotes};
           var slideRangeStr = ${slideRange ? JSON.stringify(slideRange) : 'null'};
+
+          function testMatch(text) {
+            if (useRegex) {
+              var flags = caseSensitive ? "" : "i";
+              var re = new RegExp(query, flags);
+              return re.test(text);
+            }
+            var a = caseSensitive ? text : text.toLowerCase();
+            var b = caseSensitive ? query : query.toLowerCase();
+            return a.indexOf(b) !== -1;
+          }
+
+          function extractShapeTexts(shapes) {
+            var results = [];
+            for (var j = 0; j < shapes.items.length; j++) {
+              var shape = shapes.items[j];
+              var texts = [];
+              try {
+                shape.textFrame.load("textRange");
+                try { shape.textFrame.textRange.load("text"); } catch(e) {}
+              } catch (e) {}
+              try {
+                if (shape.type === "Table") {
+                  shape.table.load("rowCount,columnCount");
+                }
+              } catch (e) {}
+            }
+            return shapes;
+          }
+
           var slides = context.presentation.slides;
           slides.load("items");
           await context.sync();
@@ -1366,33 +1410,139 @@ export function registerTools(
             if (startIdx < 0) startIdx = 0;
             if (endIdx >= total) endIdx = total - 1;
           }
-          var searchQuery = caseSensitive ? query : query.toLowerCase();
-          var matches = [];
+
+          var slideResults = [];
           for (var si = startIdx; si <= endIdx; si++) {
             var slide = slides.items[si];
             slide.shapes.load("items");
             await context.sync();
+
+            var shapeEntries = [];
+            var slideHasMatch = false;
+
             for (var j = 0; j < slide.shapes.items.length; j++) {
               var shape = slide.shapes.items[j];
+              var shapeId = String(shape.id);
+              var shapeName = shape.name;
+              var shapeType = shape.type;
+              var texts = [];
+
               try {
                 shape.textFrame.load("textRange");
                 await context.sync();
-                var shapeText = shape.textFrame.textRange.text;
-                var compareText = caseSensitive ? shapeText : shapeText.toLowerCase();
-                if (compareText.indexOf(searchQuery) !== -1) {
-                  matches.push({
-                    slideIndex: si,
-                    shapeId: String(shape.id),
-                    shapeName: shape.name,
-                    text: shapeText
-                  });
+                var t = shape.textFrame.textRange.text;
+                if (t) texts.push({ source: "shape", text: t });
+              } catch (e) {}
+
+              if (shapeType === "Table") {
+                try {
+                  shape.table.load("rowCount,columnCount");
+                  await context.sync();
+                  var rc = shape.table.rowCount;
+                  var cc = shape.table.columnCount;
+                  for (var r = 0; r < rc; r++) {
+                    for (var c = 0; c < cc; c++) {
+                      try {
+                        var cell = shape.table.getCell(r, c);
+                        cell.body.load("text");
+                        await context.sync();
+                        if (cell.body.text) texts.push({ source: "tableCell", text: cell.body.text, row: r, col: c });
+                      } catch (e2) {}
+                    }
+                  }
+                } catch (e) {}
+              }
+
+              var matched = false;
+              for (var ti = 0; ti < texts.length; ti++) {
+                if (testMatch(texts[ti].text)) { matched = true; break; }
+              }
+
+              if (matched) slideHasMatch = true;
+
+              shapeEntries.push({
+                shapeId: shapeId,
+                shapeName: shapeName,
+                shapeType: shapeType,
+                matched: matched,
+                texts: texts
+              });
+            }
+
+            var noteText = null;
+            var noteMatched = false;
+            if (searchNotes) {
+              try {
+                var ns = slide.notesSlide;
+                ns.shapes.load("items");
+                await context.sync();
+                for (var ni = 0; ni < ns.shapes.items.length; ni++) {
+                  try {
+                    ns.shapes.items[ni].textFrame.load("textRange");
+                    await context.sync();
+                    var nt = ns.shapes.items[ni].textFrame.textRange.text;
+                    if (nt && nt.trim()) {
+                      noteText = (noteText || "") + nt;
+                    }
+                  } catch (e) {}
                 }
-              } catch (e) {
-                // Shape has no text frame
+                if (noteText && testMatch(noteText)) {
+                  noteMatched = true;
+                  slideHasMatch = true;
+                }
+              } catch (e) {}
+            }
+
+            if (slideHasMatch) {
+              if (ctxLevel === "none") {
+                slideResults.push(si);
+              } else if (ctxLevel === "slide") {
+                var entry = { slideIndex: si, shapes: [] };
+                for (var k = 0; k < shapeEntries.length; k++) {
+                  var se = shapeEntries[k];
+                  var shapeInfo = {
+                    shapeId: se.shapeId,
+                    shapeName: se.shapeName,
+                    matched: se.matched
+                  };
+                  for (var ti2 = 0; ti2 < se.texts.length; ti2++) {
+                    var tx = se.texts[ti2];
+                    if (tx.source === "shape") shapeInfo.text = tx.text;
+                    else if (tx.source === "tableCell") {
+                      if (!shapeInfo.tableCells) shapeInfo.tableCells = [];
+                      shapeInfo.tableCells.push({ row: tx.row, col: tx.col, text: tx.text, matched: testMatch(tx.text) });
+                    }
+                  }
+                  entry.shapes.push(shapeInfo);
+                }
+                if (noteText) entry.notes = { text: noteText, matched: noteMatched };
+                slideResults.push(entry);
+              } else {
+                for (var k2 = 0; k2 < shapeEntries.length; k2++) {
+                  var se2 = shapeEntries[k2];
+                  if (!se2.matched) continue;
+                  for (var ti3 = 0; ti3 < se2.texts.length; ti3++) {
+                    var tx2 = se2.texts[ti3];
+                    if (!testMatch(tx2.text)) continue;
+                    var m = { slideIndex: si, shapeId: se2.shapeId, shapeName: se2.shapeName, source: tx2.source, text: tx2.text };
+                    if (tx2.source === "tableCell") { m.row = tx2.row; m.col = tx2.col; }
+                    slideResults.push(m);
+                  }
+                }
+                if (noteMatched) {
+                  slideResults.push({ slideIndex: si, source: "note", text: noteText });
+                }
               }
             }
           }
-          return { query: query, caseSensitive: caseSensitive, totalSlides: total, matches: matches };
+
+          var result = { query: query, caseSensitive: caseSensitive, regex: useRegex, totalSlides: total };
+          if (ctxLevel === "none") {
+            result.matchingSlides = slideResults;
+          } else {
+            result.matches = slideResults;
+          }
+          return result;
         `
         const target = pool.resolveTarget(presentationId)
         const result = await pool.sendCommand('executeCode', { code }, target.ws)
