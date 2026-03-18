@@ -100,6 +100,7 @@ describe('MCP Tools', () => {
       'get_slide_image',
       'insert_image',
       'list_presentations',
+      'list_slide_shapes',
       'read_slide_text',
       'read_slide_xml',
       'read_slide_zip',
@@ -1363,6 +1364,74 @@ describe('MCP Tools', () => {
     })
   })
 
+  describe('list_slide_shapes', () => {
+    it('returns shape objects with correct fields', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'list_slide_shapes',
+        arguments: { slideIndex: 0 },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+
+      pool.handleResponse(sentJson.id, 'response', {
+        slideIndex: 0,
+        slideId: 'slide-1',
+        shapes: [
+          { id: '10', name: 'Title 1', type: 'Rectangle', left: 50, top: 20, width: 400, height: 60 },
+          { id: '11', name: 'Content 2', type: 'TextBox', left: 50, top: 100, width: 400, height: 300 },
+        ],
+      })
+
+      const result = await toolPromise
+      const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
+      expect(parsed.shapes).toHaveLength(2)
+      expect(parsed.shapes[0]).toEqual({
+        id: '10',
+        name: 'Title 1',
+        type: 'Rectangle',
+        left: 50,
+        top: 20,
+        width: 400,
+        height: 60,
+      })
+    })
+
+    it('does NOT return text or fill fields', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'list_slide_shapes',
+        arguments: { slideIndex: 0 },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+
+      // Verify the Office.js code does NOT load text or fill
+      expect(sentJson.params.code).not.toContain('textFrame')
+      expect(sentJson.params.code).not.toContain('fill')
+      expect(sentJson.params.code).not.toContain('textRange')
+
+      pool.handleResponse(sentJson.id, 'response', {
+        slideIndex: 0,
+        slideId: 'slide-1',
+        shapes: [{ id: '10', name: 'Title 1', type: 'Rectangle', left: 50, top: 20, width: 400, height: 60 }],
+      })
+
+      const result = await toolPromise
+      const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
+      expect(parsed.shapes[0]).not.toHaveProperty('text')
+      expect(parsed.shapes[0]).not.toHaveProperty('fill')
+    })
+  })
+
   describe('verify_slides', () => {
     it('detects overlapping shapes', async () => {
       const ws = mockWs()
@@ -1390,9 +1459,9 @@ describe('MCP Tools', () => {
       const result = await toolPromise
       const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
       expect(parsed.issueCount).toBe(1)
-      expect(parsed.issues[0].check).toBe('overlap')
-      expect(parsed.issues[0].shapes).toContain('Shape A')
-      expect(parsed.issues[0].shapes).toContain('Shape B')
+      expect(parsed.issues[0].type).toBe('overlap')
+      expect(parsed.issues[0].shapeIds).toContain('1')
+      expect(parsed.issues[0].shapeIds).toContain('2')
     })
 
     it('detects out-of-bounds shapes', async () => {
@@ -1420,8 +1489,9 @@ describe('MCP Tools', () => {
       const result = await toolPromise
       const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
       expect(parsed.issueCount).toBe(1)
-      expect(parsed.issues[0].check).toBe('bounds')
-      expect(parsed.issues[0].message).toContain('right of slide')
+      expect(parsed.issues[0].type).toBe('bounds')
+      expect(parsed.issues[0].description).toContain('right of slide')
+      expect(parsed.issues[0].shapeIds).toContain('1')
     })
 
     it('detects empty text and tiny shapes', async () => {
@@ -1450,9 +1520,14 @@ describe('MCP Tools', () => {
       const result = await toolPromise
       const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
       expect(parsed.issueCount).toBe(2)
-      const checks = parsed.issues.map((i: { check: string }) => i.check)
-      expect(checks).toContain('empty_text')
-      expect(checks).toContain('tiny_shapes')
+      const types = parsed.issues.map((i: { type: string }) => i.type)
+      expect(types).toContain('empty_text')
+      expect(types).toContain('tiny_shapes')
+      // Verify shapeIds contains numeric IDs, not names
+      const emptyTextIssue = parsed.issues.find((i: { type: string }) => i.type === 'empty_text')
+      expect(emptyTextIssue.shapeIds).toContain('1')
+      const tinyIssue = parsed.issues.find((i: { type: string }) => i.type === 'tiny_shapes')
+      expect(tinyIssue.shapeIds).toContain('2')
     })
 
     it('runs all checks by default', async () => {

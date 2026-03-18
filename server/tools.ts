@@ -237,6 +237,56 @@ export function registerTools(
     },
   )
 
+  // --- Tool: list_slide_shapes ---
+  server.tool(
+    'list_slide_shapes',
+    'List all shapes on a slide with their IDs, types, and positions. Lighter than get_slide — omits text and fill data.',
+    {
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index from get_presentation results'),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideIndex, presentationId }) => {
+      try {
+        const code = `
+          var slides = context.presentation.slides;
+          slides.load("items");
+          await context.sync();
+          if (${slideIndex} >= slides.items.length) {
+            throw new Error("Slide index " + ${slideIndex} + " out of range (presentation has " + slides.items.length + " slides)");
+          }
+          var slide = slides.items[${slideIndex}];
+          slide.shapes.load("items");
+          await context.sync();
+          var shapes = [];
+          for (var i = 0; i < slide.shapes.items.length; i++) {
+            var s = slide.shapes.items[i];
+            shapes.push({
+              id: s.id,
+              name: s.name,
+              type: s.type,
+              left: s.left,
+              top: s.top,
+              width: s.width,
+              height: s.height
+            });
+          }
+          return { slideIndex: ${slideIndex}, slideId: slide.id, shapes: shapes };
+        `
+        const target = pool.resolveTarget(presentationId)
+        const result = await pool.sendCommand('executeCode', { code }, target.ws)
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
+        const text = JSON.stringify(result, null, 2) + (warning ?? '')
+        return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
   // --- Tool: get_slide_image ---
   server.tool(
     'get_slide_image',
@@ -1017,10 +1067,10 @@ export function registerTools(
         }
 
         const issues: Array<{
-          check: string
+          type: string
           severity: 'warning' | 'error'
-          shapes: string[]
-          message: string
+          shapeIds: string[]
+          description: string
         }> = []
 
         const { shapes, slideWidth, slideHeight } = slideData
@@ -1038,10 +1088,10 @@ export function registerTools(
                 a.top + a.height > b.top
               ) {
                 issues.push({
-                  check: 'overlap',
+                  type: 'overlap',
                   severity: 'warning',
-                  shapes: [a.name, b.name],
-                  message: `"${a.name}" and "${b.name}" overlap`,
+                  shapeIds: [a.id, b.id],
+                  description: `"${a.name}" and "${b.name}" overlap`,
                 })
               }
             }
@@ -1058,10 +1108,10 @@ export function registerTools(
             if (s.top + s.height > slideHeight) outOfBounds.push('below slide')
             if (outOfBounds.length > 0) {
               issues.push({
-                check: 'bounds',
+                type: 'bounds',
                 severity: 'warning',
-                shapes: [s.name],
-                message: `"${s.name}" extends ${outOfBounds.join(', ')}`,
+                shapeIds: [s.id],
+                description: `"${s.name}" extends ${outOfBounds.join(', ')}`,
               })
             }
           }
@@ -1072,10 +1122,10 @@ export function registerTools(
           for (const s of shapes) {
             if (s.text !== undefined && s.text.trim() === '') {
               issues.push({
-                check: 'empty_text',
+                type: 'empty_text',
                 severity: 'warning',
-                shapes: [s.name],
-                message: `"${s.name}" has an empty text frame`,
+                shapeIds: [s.id],
+                description: `"${s.name}" has an empty text frame`,
               })
             }
           }
@@ -1086,10 +1136,10 @@ export function registerTools(
           for (const s of shapes) {
             if (s.width < 10 || s.height < 10) {
               issues.push({
-                check: 'tiny_shapes',
+                type: 'tiny_shapes',
                 severity: 'warning',
-                shapes: [s.name],
-                message: `"${s.name}" is very small (${s.width.toFixed(1)} x ${s.height.toFixed(1)} pt)`,
+                shapeIds: [s.id],
+                description: `"${s.name}" is very small (${s.width.toFixed(1)} x ${s.height.toFixed(1)} pt)`,
               })
             }
           }
