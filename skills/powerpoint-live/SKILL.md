@@ -110,6 +110,33 @@ If the user requests a restyle or redesign — STOP before making edits:
 2. Ask whether to (a) keep the current template and polish content within it, or (b) replace it with a new design.
 3. Wait for the user's answer before proceeding.
 
+## Planning & Elicitation
+
+### When to ask clarifying questions BEFORE starting
+
+For complex tasks (multi-slide decks, redesigns, data-heavy presentations), ask for missing context BEFORE doing any work. Do NOT assume details the user has not provided.
+
+Triggers:
+- "Make me a presentation about X" -- ask: audience, slide count, tone (formal/conversational), key points to cover
+- "Turn this into slides" -- ask: structure (one topic per slide / grouped by theme), what to visualize vs. bullet-point, level of detail
+- "Make this look better" / "Redesign" -- ask: focus (visual consistency / reducing density / restructuring flow), keep current structure or reorganize
+
+### When NOT to ask
+
+Simple, unambiguous requests ("Add a title slide", "Change the font to Arial", "Move this chart to slide 3") -- just do it. Factual or how-to questions -- just answer.
+
+### Storyline-first rule (mandatory for multi-slide decks)
+
+For multi-slide decks, PROPOSE THE STORYLINE FIRST -- slide titles and key points -- and get approval BEFORE creating any slides. Do NOT build 10+ slides without the user confirming the narrative arc.
+
+### Layout prototype rule
+
+When creating multiple slides that share a layout (e.g., one slide per team member, one per product), build ONE example slide first. Show it, get feedback on the design, then replicate across the remaining slides.
+
+### Milestone checkpoints
+
+For multi-step work, check in at key milestones. Show interim outputs and confirm before moving on. Do NOT build end-to-end without feedback.
+
 ## Workflow
 
 1. **Discover**: `list_presentations` — find connected presentations
@@ -121,6 +148,18 @@ If the user requests a restyle or redesign — STOP before making edits:
 6. **Verify**: full verification loop (see below)
 
 Always inspect before modifying. Always verify after modifying.
+
+### Incremental Deck Creation
+
+For 3+ slides: build one slide at a time. Announce each slide before creating it ("Creating the Market Analysis slide..."). Use separate `execute_officejs` calls per slide -- this allows user feedback between slides.
+
+Recommended flow for a multi-slide deck:
+1. `edit_slide_master` -- define theme, colors, fonts, background, decorative shapes
+2. Title slide -- add slide with "Title Slide" layout, fill placeholders
+3. Content slides -- one at a time, each in its own `execute_officejs` call
+4. `verify_slides` -- check all slides for overlaps and unused placeholders
+
+Do NOT build an entire multi-slide deck in a single call.
 
 ### Verification Loop
 
@@ -157,6 +196,27 @@ Subagent prompt (replace N with the slide index):
 Rules: never mention "the reviewer" to user. Speak in first person: "I noticed the title overlaps" not "The reviewer found an overlap." Only use for completed work, not initial inspection.
 
 For `execute_officejs` code patterns, see [code-patterns.md](references/code-patterns.md).
+
+## User Preferences Persistence
+
+Detect broad style preferences that apply across presentations and save them to memory:
+- Save: "always use Oxford commas", "bold titles", "dark backgrounds", "keep slides evenly spaced", "always use 16pt body text"
+- Do NOT save one-off, task-specific requests: "make this cell bold", "change this font to Arial", "move this chart to slide 3"
+
+Before saving, check existing memory for duplicates. If the preference already exists, do not re-save it.
+
+Use `/memory` or the project CLAUDE.md to persist preferences across sessions. Keep entries minimal -- one line per preference, grouped under a `## Slide Preferences` heading.
+
+## Data Import Workflow
+
+When the user provides data files (Excel, CSV, PDF) to populate slides:
+
+1. Parse the file with `python3` (pandas, openpyxl, pdfplumber are available) to extract structured data
+2. Use `execute_officejs` to populate slides with the extracted data
+
+For .pptx template files: use `copy_slides` to import slides from another open presentation.
+
+`insertSlidesFromBase64` rejects VBA macros, external references, OLE objects, and ActiveX controls. Only clean .pptx files pass through.
 
 ## OOXML Editing Workflow
 
