@@ -81,7 +81,7 @@ describe('MCP Tools', () => {
     pool = new ConnectionPool(100)
   })
 
-  it('lists all 18 tools', async () => {
+  it('lists all 19 tools', async () => {
     const { client } = await setupMcpClient(pool)
     const result = await client.listTools()
     const names = result.tools.map((t) => t.name).sort()
@@ -103,6 +103,7 @@ describe('MCP Tools', () => {
       'read_slide_text',
       'read_slide_xml',
       'read_slide_zip',
+      'search_text',
       'verify_slides',
     ])
   })
@@ -1867,6 +1868,134 @@ describe('MCP Tools', () => {
       const result = await toolPromise
       const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
       expect(parsed.chartFile).toBe('ppt/charts/chart2.xml')
+    })
+  })
+
+  describe('search_text', () => {
+    it('searches all slides for matching text and returns matches', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: '/path/test.pptx',
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'budget' },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.action).toBe('executeCode')
+      expect(sent.params.code).toContain('budget')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'budget',
+        caseSensitive: false,
+        totalSlides: 5,
+        matches: [
+          {
+            slideIndex: 1,
+            shapeId: '42',
+            shapeName: 'TextBox 3',
+            text: 'The budget for Q3 is $1.2M',
+          },
+          {
+            slideIndex: 3,
+            shapeId: '78',
+            shapeName: 'Content Placeholder',
+            text: 'Budget allocation overview',
+          },
+        ],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.query).toBe('budget')
+      expect(parsed.matches).toHaveLength(2)
+      expect(parsed.matches[0].slideIndex).toBe(1)
+      expect(parsed.matches[0].shapeId).toBe('42')
+      expect(parsed.matches[1].slideIndex).toBe(3)
+    })
+
+    it('searches specific slide range when slideRange is provided', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'hello', slideRange: '2-4' },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sent.params.code).toContain('2-4')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'hello',
+        caseSensitive: false,
+        totalSlides: 10,
+        matches: [],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.matches).toHaveLength(0)
+    })
+
+    it('supports case-sensitive search', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', {
+        ws,
+        ready: true,
+        presentationId: 'test.pptx',
+        filePath: null,
+      })
+
+      const { client } = await setupMcpClient(pool)
+      const toolPromise = client.callTool({
+        name: 'search_text',
+        arguments: { query: 'Budget', caseSensitive: true },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+
+      const sent = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      // Case-sensitive: should NOT lowercase
+      expect(sent.params.code).toContain('caseSensitive = true')
+
+      pool.handleResponse(sent.id, 'response', {
+        query: 'Budget',
+        caseSensitive: true,
+        totalSlides: 5,
+        matches: [
+          {
+            slideIndex: 3,
+            shapeId: '78',
+            shapeName: 'Title',
+            text: 'Budget allocation overview',
+          },
+        ],
+      })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      const parsed = JSON.parse(text)
+      expect(parsed.caseSensitive).toBe(true)
+      expect(parsed.matches).toHaveLength(1)
     })
   })
 })

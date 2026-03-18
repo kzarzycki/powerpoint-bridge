@@ -1325,6 +1325,87 @@ export function registerTools(
     },
   )
 
+  // --- Tool: search_text ---
+  server.tool(
+    'search_text',
+    'Search for text across all slides (or a slide range) in the presentation. Returns matching slide indices, shape IDs, shape names, and the full text of each matching shape. Case-insensitive by default. Use this to find where specific content appears before editing.',
+    {
+      query: z.string().describe('Text to search for (plain substring match)'),
+      slideRange: z
+        .string()
+        .optional()
+        .describe('Optional slide range to search, e.g. "0-4" or "2-7". Zero-based. Omit to search all slides.'),
+      caseSensitive: z
+        .boolean()
+        .optional()
+        .describe('Whether the search is case-sensitive. Default: false (case-insensitive).'),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ query, slideRange, caseSensitive, presentationId }) => {
+      try {
+        const cs = caseSensitive === true
+        const escapedQuery = JSON.stringify(query)
+        const code = `
+          var caseSensitive = ${cs};
+          var query = ${escapedQuery};
+          var slideRangeStr = ${slideRange ? JSON.stringify(slideRange) : 'null'};
+          var slides = context.presentation.slides;
+          slides.load("items");
+          await context.sync();
+          var total = slides.items.length;
+          var startIdx = 0;
+          var endIdx = total - 1;
+          if (slideRangeStr) {
+            var parts = slideRangeStr.split("-");
+            startIdx = parseInt(parts[0], 10);
+            if (parts.length > 1) endIdx = parseInt(parts[1], 10);
+            else endIdx = startIdx;
+            if (startIdx < 0) startIdx = 0;
+            if (endIdx >= total) endIdx = total - 1;
+          }
+          var searchQuery = caseSensitive ? query : query.toLowerCase();
+          var matches = [];
+          for (var si = startIdx; si <= endIdx; si++) {
+            var slide = slides.items[si];
+            slide.shapes.load("items");
+            await context.sync();
+            for (var j = 0; j < slide.shapes.items.length; j++) {
+              var shape = slide.shapes.items[j];
+              try {
+                shape.textFrame.load("textRange");
+                await context.sync();
+                var shapeText = shape.textFrame.textRange.text;
+                var compareText = caseSensitive ? shapeText : shapeText.toLowerCase();
+                if (compareText.indexOf(searchQuery) !== -1) {
+                  matches.push({
+                    slideIndex: si,
+                    shapeId: String(shape.id),
+                    shapeName: shape.name,
+                    text: shapeText
+                  });
+                }
+              } catch (e) {
+                // Shape has no text frame
+              }
+            }
+          }
+          return { query: query, caseSensitive: caseSensitive, totalSlides: total, matches: matches };
+        `
+        const target = pool.resolveTarget(presentationId)
+        const result = await pool.sendCommand('executeCode', { code }, target.ws)
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
+        const text = JSON.stringify(result, null, 2) + (warning ?? '')
+        return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
   // --- Tool: execute_officejs ---
   server.tool(
     'execute_officejs',

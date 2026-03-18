@@ -37,6 +37,7 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 | `duplicate_slide` | Clone a slide within the same presentation | `slideIndex`, `insertAfter?`, `presentationId?` |
 | `verify_slides` | Check for overlapping, out-of-bounds, empty-text, or tiny shapes | `slideIndex`, `checks?`, `presentationId?` |
 | `edit_slide_chart` | Create chart from structured data (generates all OOXML automatically) | `slideIndex`, `chartType`, `title`, `categories`, `series`, `position?`, `options?`, `presentationId?` |
+| `search_text` | Search for text across all slides (or a range), returns matching slide indices, shape IDs, and text | `query`, `slideRange?`, `caseSensitive?`, `presentationId?` |
 | `execute_officejs` | Run arbitrary Office.js code in the live presentation | `code`, `presentationId?` |
 
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
@@ -47,9 +48,10 @@ All positioning values from `get_slide` are in **points** (1 pt = 1/72 inch). St
 
 1. **Discover**: `list_presentations` — find connected presentations
 2. **Audit**: Check existing state — slide count, available layouts, which slides already have content. Use `get_deck_overview` for a visual overview, or `get_presentation` then `get_slide` per slide. This is essential for resuming partial builds or modifying existing decks.
-3. **See**: `get_slide_image` — visually inspect specific slides
-4. **Modify**: `execute_officejs` — build entire slides in a single call (all shapes, text, connectors, accents at once) for efficiency and to avoid mid-build visual flashing
-5. **Verify**: full verification loop (see below)
+3. **Find**: `search_text` — locate specific content across slides by text substring (like grep for slides). Returns shape IDs for direct editing.
+4. **See**: `get_slide_image` — visually inspect specific slides
+5. **Modify**: `execute_officejs` — build entire slides in a single call (all shapes, text, connectors, accents at once) for efficiency and to avoid mid-build visual flashing
+6. **Verify**: full verification loop (see below)
 
 Always inspect before modifying. Always verify after modifying.
 
