@@ -48,8 +48,8 @@ All positioning values from `get_slide` are in **points** (1 pt = 1/72 inch). St
 
 Key return formats to know:
 
-- **`list_slide_shapes`** returns `[{ id, name, type, left, top, width, height }]` — `id` is a stable numeric string (use this for read/edit tools); `name` is locale-dependent (never use as selector); `type` is one of "GeometricShape", "TextBox", "Table", "Chart", "Picture", "Group"
-- **`verify_slides`** returns `{ slideIndex, issues: [{ type, description, shapeIds }] }` — `type` is "overlap", "out_of_bounds", or "unused_placeholder"; `shapeIds` are stable IDs
+- **`get_slide`** returns `{ slideIndex, slideId, shapes: [{ id, name, type, left, top, width, height, text?, fill? }] }` — `id` is a stable numeric string (use for read/edit tools); `name` is locale-dependent (never rely on as selector); `type` is one of "GeometricShape", "TextBox", "Table", "Chart", "Picture", "Group"
+- **`verify_slides`** returns `{ slideIndex, shapeCount, issueCount, issues: [{ check, severity, shapes, message }] }` — `check` is "overlap", "bounds", "empty_text", or "tiny_shapes"; `shapes` is an array of shape names; `severity` is "warning"
 - **`search_icons`** returns `[{ id, description, isMono, contentTier, searchScore }]` — `isMono: false` = filled/colorful, `isMono: true` = outline/mono; pick highest `searchScore` matching intent
 - **`read_slide_text`** returns raw OOXML `<a:p>` paragraph elements (does NOT include `<a:bodyPr>` or `<a:lstStyle>`)
 - **`read_slide_zip`** returns `{ zipContents: { path: content }, allPaths: [...] }`
