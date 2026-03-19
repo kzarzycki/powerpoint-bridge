@@ -202,14 +202,13 @@ If overlaps/overflow: shorten text, reduce font, reposition body content (not ti
 
 **Efficient verification**: For large decks, visually verify only the most complex slides (high shape count, dense content) rather than every slide. Run `verify_slides` on all slides structurally, but pick 4-5 key slides for the visual subagent check.
 
-### Visual Review via Subagent
+### Visual Review
 
-Use the Agent tool to spawn a subagent that reviews the slide screenshot. The subagent has no conversation context, providing an independent review.
-
-Subagent prompt (replace N with the slide index):
-> Call screenshot_slide(slideIndex: N) to capture the slide, then review it for: text overflow or truncation, overlapping shapes or text, unreadable text (too small, poor contrast), misalignment or inconsistent spacing, empty or unused space, inconsistent styling (mixed fonts, colors, sizes). Return a JSON array of issues found, each with: severity (error/warning/info), category, description, and suggestion. If no issues found, return [].
+After structural checks pass, invoke `/review-slide N presentationId` (where N is the 0-based slide index) for an independent visual review. Always pass the full presentationId — this skips the list_presentations lookup and avoids ambiguity. The skill runs in a forked context — the reviewer has no conversation knowledge and evaluates purely what it sees.
 
 Rules: never mention "the reviewer" to user. Speak in first person: "I noticed the title overlaps" not "The reviewer found an overlap." Only use for completed work, not initial inspection.
+
+For large decks: run `verify_slides` structurally on all slides, but `/review-slide` only on the 4-5 most complex slides.
 
 For `execute_officejs` code patterns, see [code-patterns.md](references/code-patterns.md).
 
