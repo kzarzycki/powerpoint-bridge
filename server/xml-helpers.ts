@@ -61,6 +61,7 @@ export async function reimportSlide(
     var slides = context.presentation.slides;
     slides.load("items");
     await context.sync();
+    var countBefore = slides.items.length;
     // Find and delete the original slide by ID
     var found = false;
     for (var i = 0; i < slides.items.length; i++) {
@@ -73,10 +74,15 @@ export async function reimportSlide(
     if (!found) {
       throw new Error("Original slide not found for reimport (ID: ${slideId})");
     }
-    await context.sync();
-    // Insert modified slide at the correct position
+    // Batch delete + insert in one sync to reduce the window for partial failure
     context.presentation.insertSlidesFromBase64("${modifiedBase64}", ${optionsStr});
     await context.sync();
+    // Verify slide count is unchanged (deleted one, inserted one)
+    slides.load("items");
+    await context.sync();
+    if (slides.items.length !== countBefore) {
+      throw new Error("Reimport verification failed: expected " + countBefore + " slides but found " + slides.items.length);
+    }
     return { success: true };
   `
   await pool.sendCommand('executeCode', { code }, targetWs, timeout)

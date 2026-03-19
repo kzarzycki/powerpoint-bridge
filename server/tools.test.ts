@@ -1068,6 +1068,14 @@ describe('MCP Tools', () => {
       const reimportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[1][0])
       expect(reimportJson.params.code).toContain('insertSlidesFromBase64')
       expect(reimportJson.params.code).toContain('slide-0')
+      // Verify atomic reimport: delete + insert batched before sync, with post-verification
+      const reimportCode = reimportJson.params.code as string
+      const deleteIdx = reimportCode.indexOf('.delete()')
+      const insertIdx = reimportCode.indexOf('insertSlidesFromBase64')
+      const firstSyncAfterDelete = reimportCode.indexOf('await context.sync()', deleteIdx)
+      expect(insertIdx).toBeGreaterThan(deleteIdx)
+      expect(insertIdx).toBeLessThan(firstSyncAfterDelete)
+      expect(reimportCode).toContain('countBefore')
       pool.handleResponse(reimportJson.id, 'response', { success: true })
 
       const result = await toolPromise
