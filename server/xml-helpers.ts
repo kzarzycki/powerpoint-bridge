@@ -86,8 +86,17 @@ export async function reimportSlide(
 // XML helpers
 // ---------------------------------------------------------------------------
 
-const NS_P = 'http://schemas.openxmlformats.org/presentationml/2006/main'
-const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+export const NS_P = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+export const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+
+export function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
 
 export function parseSlideXml(xmlString: string): Document {
   return new DOMParser().parseFromString(xmlString, 'text/xml')

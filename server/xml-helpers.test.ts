@@ -2,6 +2,7 @@ import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import {
   autoRegisterContentTypes,
+  escapeXml,
   extractParagraphs,
   extractSlideXmlFromZip,
   extractZipFiles,
@@ -278,6 +279,24 @@ describe('xml-helpers', () => {
       const ct = await zip.file('[Content_Types].xml')!.async('string')
       expect(ct).toContain('PartName="/ppt/charts/chart1.xml"')
       expect(ct).toContain('PartName="/ppt/charts/chart2.xml"')
+    })
+  })
+
+  describe('escapeXml', () => {
+    it('escapes all XML special characters', () => {
+      expect(escapeXml('&')).toBe('&amp;')
+      expect(escapeXml('<')).toBe('&lt;')
+      expect(escapeXml('>')).toBe('&gt;')
+      expect(escapeXml('"')).toBe('&quot;')
+      expect(escapeXml("'")).toBe('&apos;')
+    })
+
+    it('escapes mixed content', () => {
+      expect(escapeXml('Q1 Revenue & "Margins" <2026>')).toBe('Q1 Revenue &amp; &quot;Margins&quot; &lt;2026&gt;')
+    })
+
+    it('passes through normal text unchanged', () => {
+      expect(escapeXml('Hello World 123')).toBe('Hello World 123')
     })
   })
 })

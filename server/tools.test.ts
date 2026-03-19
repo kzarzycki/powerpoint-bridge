@@ -1236,6 +1236,98 @@ describe('MCP Tools', () => {
       const result = await toolPromise
       expect(result.isError).toBe(true)
     })
+
+    it('executes code-based DOM manipulation and reimports', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+      const base64 = await makeSlideZipBase64()
+
+      const toolPromise = client.callTool({
+        name: 'edit_slide_xml',
+        arguments: {
+          slideIndex: 0,
+          code: `
+            var shape = findShapeById("2");
+            var spPr = shape.getElementsByTagNameNS(NS_P, "spPr")[0];
+            var fill = doc.createElementNS(NS_A, "a:solidFill");
+            var clr = doc.createElementNS(NS_A, "a:srgbClr");
+            clr.setAttribute("val", "FF0000");
+            fill.appendChild(clr);
+            spPr.appendChild(fill);
+          `,
+          explanation: 'Add red fill to title shape',
+        },
+      })
+
+      // Export
+      await new Promise((r) => setTimeout(r, 10))
+      const exportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      pool.handleResponse(exportJson.id, 'response', { base64, slideId: 'slide-0', prevSlideId: null })
+
+      // Reimport
+      await new Promise((r) => setTimeout(r, 10))
+      const reimportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[1][0])
+      expect(reimportJson.params.code).toContain('insertSlidesFromBase64')
+      pool.handleResponse(reimportJson.id, 'response', { success: true })
+
+      const result = await toolPromise
+      expect(JSON.parse((result.content as Array<{ text: string }>)[0].text).success).toBe(true)
+    })
+
+    it('rejects when both xml and code are provided', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      const result = await client.callTool({
+        name: 'edit_slide_xml',
+        arguments: { slideIndex: 0, xml: '<p:sld/>', code: 'var x = 1;' },
+      })
+      expect(result.isError).toBe(true)
+      const text = (result.content as Array<{ text: string }>)[0].text
+      expect(text).toContain("Provide either 'xml' or 'code'")
+    })
+
+    it('rejects when neither xml nor code is provided', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      const result = await client.callTool({
+        name: 'edit_slide_xml',
+        arguments: { slideIndex: 0 },
+      })
+      expect(result.isError).toBe(true)
+      const text = (result.content as Array<{ text: string }>)[0].text
+      expect(text).toContain("Provide either 'xml' or 'code'")
+    })
+
+    it('returns error when code throws at runtime', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+      const base64 = await makeSlideZipBase64()
+
+      const toolPromise = client.callTool({
+        name: 'edit_slide_xml',
+        arguments: {
+          slideIndex: 0,
+          code: 'throw new Error("shape not found");',
+        },
+      })
+
+      // Export
+      await new Promise((r) => setTimeout(r, 10))
+      const exportJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      pool.handleResponse(exportJson.id, 'response', { base64, slideId: 'slide-0', prevSlideId: null })
+
+      const result = await toolPromise
+      expect(result.isError).toBe(true)
+      const text = (result.content as Array<{ text: string }>)[0].text
+      expect(text).toContain('Code execution error')
+      expect(text).toContain('shape not found')
+    })
   })
 
   describe('execute_officejs', () => {
