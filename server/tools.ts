@@ -1654,6 +1654,95 @@ export function registerTools(
     },
   )
 
+  // --- Tool: format_shapes ---
+  server.tool(
+    'format_shapes',
+    'Apply formatting to multiple shapes on a slide in one call. Generates Office.js code internally. Use for fill color, font bold/italic/size/color/name. Cannot set corner radius or borders (use edit_slide_xml code mode for those).',
+    {
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index'),
+      shapes: z
+        .array(
+          z.object({
+            id: z.string().describe('Shape ID from get_slide or list_slide_shapes'),
+            fill: z.string().optional().describe('Fill color as hex without # (e.g., "1A1A1E")'),
+            font: z
+              .object({
+                bold: z.boolean().optional(),
+                italic: z.boolean().optional(),
+                size: z.number().optional().describe('Font size in points'),
+                color: z.string().optional().describe('Font color as hex without # (e.g., "FFFFFF")'),
+                name: z.string().optional().describe('Font name (e.g., "Calibri")'),
+              })
+              .optional(),
+          }),
+        )
+        .min(1)
+        .describe('Shapes to format with their properties'),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ slideIndex, shapes, presentationId }) => {
+      try {
+        const target = pool.resolveTarget(presentationId)
+
+        // Build Office.js code that applies formatting to each shape
+        const shapeOps = shapes
+          .map((s) => {
+            const lines: string[] = []
+            lines.push(`  var s = shapeMap["${s.id}"];`)
+            lines.push(
+              `  if (!s) throw new Error("Shape " + ${JSON.stringify(s.id)} + " not found on slide ${slideIndex}");`,
+            )
+
+            if (s.fill) {
+              lines.push(`  s.fill.setSolidColor("${s.fill}");`)
+            }
+
+            if (s.font) {
+              lines.push(`  var tf = s.getTextFrameOrNullObject();`)
+              lines.push(`  await context.sync();`)
+              lines.push(`  if (!tf.isNullObject) {`)
+              lines.push(`    var tr = tf.textRange;`)
+              if (s.font.bold !== undefined) lines.push(`    tr.font.bold = ${s.font.bold};`)
+              if (s.font.italic !== undefined) lines.push(`    tr.font.italic = ${s.font.italic};`)
+              if (s.font.size !== undefined) lines.push(`    tr.font.size = ${s.font.size};`)
+              if (s.font.color !== undefined) lines.push(`    tr.font.color = "${s.font.color}";`)
+              if (s.font.name !== undefined) lines.push(`    tr.font.name = "${s.font.name}";`)
+              lines.push(`  }`)
+            }
+
+            return lines.join('\n')
+          })
+          .join('\n')
+
+        const code = `
+var slides = context.presentation.slides;
+slides.load("items");
+await context.sync();
+var slide = slides.items[${slideIndex}];
+slide.shapes.load("items");
+await context.sync();
+var shapeMap = {};
+for (var i = 0; i < slide.shapes.items.length; i++) {
+  shapeMap[slide.shapes.items[i].id] = slide.shapes.items[i];
+}
+${shapeOps}
+await context.sync();
+return { success: true, shapesFormatted: ${shapes.length} };`
+
+        const result = await pool.sendCommand('executeCode', { code }, target.ws)
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
+        const text = JSON.stringify(result ?? { success: true }, null, 2) + (warning ?? '')
+        return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
   // --- Tool: execute_officejs ---
   server.tool(
     'execute_officejs',

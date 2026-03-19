@@ -6,13 +6,26 @@
 
 | Approach | Best for |
 |----------|----------|
-| Office.js (`execute_officejs`) | Simple text, shapes, fills, positioning — anything the Office.js API exposes directly |
-| OOXML tools (`read/edit_slide_text`, `read/edit_slide_xml`) | Rich text formatting, precise paragraph control, bulk multi-shape edits |
+| `format_shapes` | Fill color, font bold/italic/size/color/name — declarative batch formatting, 1 call per slide |
+| Office.js (`execute_officejs`) | Shape creation, positioning, simple text writes — anything the Office.js API exposes directly |
+| OOXML tools (`edit_slide_xml` with `code`) | Geometry (corners, borders), gradients, mixed formatting, precise paragraph control |
+| OOXML tools (`edit_slide_xml` with `xml`) | Full slide XML replacement (rare — prefer code mode to avoid attribute loss) |
+| `edit_slide_text` | Single-shape paragraph editing with OOXML (preserves bodyPr/lstStyle) |
 | File-based (`get_local_copy` + `/pptx` skill) | Charts, master/theme editing, rels, Content_Types — anything beyond slide XML |
 
-## Workflow: Discover → Read → Modify → Write → Verify
+## Workflow
 
-1. `get_slide(slideIndex)` → find shape IDs (the `id` field on each shape)
+### Preferred: Code mode (1 call)
+
+1. `get_slide(slideIndex)` → find shape IDs
+2. `edit_slide_xml(slideIndex, code: "...")` → DOM manipulation server-side (read + modify in one call)
+3. `get_slide_image(slideIndex)` → visual verification
+
+Code mode receives a pre-parsed DOM with helpers. See SKILL.md "OOXML Editing Workflow" for the full sandbox context and examples.
+
+### Legacy: XML string mode (2+ calls)
+
+1. `get_slide(slideIndex)` → find shape IDs
 2. `read_slide_text(slideIndex, shapeId)` or `read_slide_xml(slideIndex, shapeId?)`
 3. Modify the XML using `/pptx` skill knowledge
 4. `edit_slide_text(slideIndex, shapeId, xml)` or `edit_slide_xml(slideIndex, xml, shapeId?)`

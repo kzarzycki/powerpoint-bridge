@@ -50807,6 +50807,76 @@ ${textParts.join("\n")}` : "\n(no text content)";
     }
   );
   server.tool(
+    "format_shapes",
+    "Apply formatting to multiple shapes on a slide in one call. Generates Office.js code internally. Use for fill color, font bold/italic/size/color/name. Cannot set corner radius or borders (use edit_slide_xml code mode for those).",
+    {
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
+      shapes: external_exports3.array(
+        external_exports3.object({
+          id: external_exports3.string().describe("Shape ID from get_slide or list_slide_shapes"),
+          fill: external_exports3.string().optional().describe('Fill color as hex without # (e.g., "1A1A1E")'),
+          font: external_exports3.object({
+            bold: external_exports3.boolean().optional(),
+            italic: external_exports3.boolean().optional(),
+            size: external_exports3.number().optional().describe("Font size in points"),
+            color: external_exports3.string().optional().describe('Font color as hex without # (e.g., "FFFFFF")'),
+            name: external_exports3.string().optional().describe('Font name (e.g., "Calibri")')
+          }).optional()
+        })
+      ).min(1).describe("Shapes to format with their properties"),
+      presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
+    },
+    async ({ slideIndex, shapes, presentationId }) => {
+      try {
+        const target = pool2.resolveTarget(presentationId);
+        const shapeOps = shapes.map((s) => {
+          const lines = [];
+          lines.push(`  var s = shapeMap["${s.id}"];`);
+          lines.push(
+            `  if (!s) throw new Error("Shape " + ${JSON.stringify(s.id)} + " not found on slide ${slideIndex}");`
+          );
+          if (s.fill) {
+            lines.push(`  s.fill.setSolidColor("${s.fill}");`);
+          }
+          if (s.font) {
+            lines.push(`  var tf = s.getTextFrameOrNullObject();`);
+            lines.push(`  await context.sync();`);
+            lines.push(`  if (!tf.isNullObject) {`);
+            lines.push(`    var tr = tf.textRange;`);
+            if (s.font.bold !== void 0) lines.push(`    tr.font.bold = ${s.font.bold};`);
+            if (s.font.italic !== void 0) lines.push(`    tr.font.italic = ${s.font.italic};`);
+            if (s.font.size !== void 0) lines.push(`    tr.font.size = ${s.font.size};`);
+            if (s.font.color !== void 0) lines.push(`    tr.font.color = "${s.font.color}";`);
+            if (s.font.name !== void 0) lines.push(`    tr.font.name = "${s.font.name}";`);
+            lines.push(`  }`);
+          }
+          return lines.join("\n");
+        }).join("\n");
+        const code = `
+var slides = context.presentation.slides;
+slides.load("items");
+await context.sync();
+var slide = slides.items[${slideIndex}];
+slide.shapes.load("items");
+await context.sync();
+var shapeMap = {};
+for (var i = 0; i < slide.shapes.items.length; i++) {
+  shapeMap[slide.shapes.items[i].id] = slide.shapes.items[i];
+}
+${shapeOps}
+await context.sync();
+return { success: true, shapesFormatted: ${shapes.length} };`;
+        const result = await pool2.sendCommand("executeCode", { code }, target.ws);
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
+        const text = JSON.stringify(result ?? { success: true }, null, 2) + (warning ?? "");
+        return { content: [{ type: "text", text }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+  server.tool(
     "execute_officejs",
     "Execute arbitrary Office.js code inside the live PowerPoint presentation. The code runs inside PowerPoint.run(async (context) => { ... }) with 'context' available as a variable. Use 'await context.sync()' after loading properties. Return a value to get it back as the tool result. For positioning, all values are in points (1 point = 1/72 inch). Common operations: add shapes, set text, change colors, add/delete slides.",
     {

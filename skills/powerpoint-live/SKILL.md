@@ -38,6 +38,7 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 | `verify_slides` | Check for overlapping, out-of-bounds, empty-text, or tiny shapes | `slideIndex`, `checks?`, `presentationId?` |
 | `edit_slide_chart` | Create chart from structured data (generates all OOXML automatically) | `slideIndex`, `chartType`, `title`, `categories`, `series`, `position?`, `options?`, `presentationId?` |
 | `search_text` | Grep for slides — search text across shapes, tables, and speaker notes with regex support | `query`, `slideRange?`, `caseSensitive?`, `regex?`, `context?` (`shape`/`slide`/`none`), `includeNotes?`, `presentationId?` |
+| `format_shapes` | Batch-apply fill and font formatting to shapes in one call | `slideIndex`, `shapes: [{ id, fill?, font? }]`, `presentationId?` |
 | `execute_officejs` | Run arbitrary Office.js code in the live presentation | `code`, `presentationId?` |
 
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
@@ -59,7 +60,8 @@ Key return formats to know:
 | Tool | Key non-obvious behavior |
 |------|--------------------------|
 | `edit_slide_text` | The `xml` field takes raw OOXML paragraph XML, not executable code. Preserves `<a:bodyPr>` and `<a:lstStyle>` automatically. Must auto-size shapes after edit. |
-| `edit_slide_xml` | Exported slide is ALWAYS `ppt/slides/slide1.xml` in the zip regardless of `slideIndex`. |
+| `edit_slide_xml` | Two modes: `xml` (finished XML string) or `code` (JS that manipulates pre-parsed DOM server-side). Code mode preserves untouched attributes. Exported slide is ALWAYS `ppt/slides/slide1.xml` in the zip regardless of `slideIndex`. |
+| `format_shapes` | Uses `getTextFrameOrNullObject()` internally. Cannot set corner radius, borders, or gradients — use `edit_slide_xml` code mode for those. Color format: hex without `#`. |
 | `edit_slide_master` | The `zip` contains the full PPTX structure (not a single slide). `p:bg` must be first child of `p:cSld`. |
 | `verify_slides` | Must auto-size shapes first or stale dimensions cause missed overlaps. Table overflow needs API fix, not OOXML. |
 | `insert_icon` | `noChangeAspect` is locked (can't stretch). `color` requires `#` prefix: `"#FF5733"`. Do NOT use `shape.fill.setSolidColor()` for icons. |
@@ -197,6 +199,34 @@ Rules: never mention "the reviewer" to user. Speak in first person: "I noticed t
 
 For `execute_officejs` code patterns, see [code-patterns.md](references/code-patterns.md).
 
+## Tool Selection Hierarchy
+
+Choose the right tool for each edit. Prefer higher tools in this table — fall back only when the preferred tool cannot express the change.
+
+| Change type | Tool | Why |
+|---|---|---|
+| Fill color, font bold/italic/size/color/name | `format_shapes` | Declarative, 1 call per slide, no XML risk |
+| Mixed formatting within one shape (some words bold, some not) | `edit_slide_text` | Office.js has no paragraph-level font API |
+| Geometry (corners, borders), gradients, attributes Office.js cannot set | `edit_slide_xml` with `code` | DOM manipulation preserves untouched attributes |
+| Complex layouts, new shapes, diagrams | `edit_slide_xml` with `code` | Full OOXML control |
+| Simple text writes, shape creation, positioning | `execute_officejs` | Direct Office.js API |
+
+**Key rule**: If `format_shapes` can express it, use `format_shapes`. Fall back to `edit_slide_xml` code mode only for properties Office.js cannot set (corner radius, borders, gradients, precise paragraph formatting).
+
+**Never**: Use raw XML string replacement (`edit_slide_xml` with `xml` param) for formatting-only changes. OOXML is fully explicit — every omitted attribute is lost. Prefer `format_shapes` or `edit_slide_xml` with `code` (DOM manipulation preserves untouched attributes).
+
+### Correction & Audit Workflow
+
+When fixing style issues across multiple slides (e.g., after an audit finds inconsistent colors, fonts, or formatting):
+
+1. **Process by slide, not by type** — apply ALL fixes for slide N in one call, then move to N+1. Do NOT sweep all slides for colors, then all slides for fonts, then all slides for corners.
+2. **Reuse existing audit data** — if an audit file or previous tool output already describes the issues per slide, use it directly. Do NOT re-read slides with `get_slide` when you already have the information.
+3. **Match tool to property**:
+   - Office.js-expressible properties (fill, font bold/size/color/name) → `format_shapes` (one call per slide, all shapes)
+   - OOXML-only properties (corners, borders) → `edit_slide_xml` with `code` (one call per slide, all shapes via DOM)
+   - If a slide needs both, use two calls: `format_shapes` first, then `edit_slide_xml` code
+4. **Verify after each slide**, not after each property type — `get_slide_image` per slide to confirm all fixes applied correctly before moving on.
+
 ## User Preferences Persistence
 
 Detect broad style preferences that apply across presentations and save them to memory:
@@ -222,17 +252,64 @@ For .pptx template files: use `copy_slides` to import slides from another open p
 
 **Prerequisite**: Load the `/pptx` skill for OOXML structure knowledge (namespaces, element anatomy, formatting rules).
 
-For fine-grained formatting control beyond what Office.js properties expose, use the OOXML tools to read/modify raw slide XML. See [ooxml-reference.md](references/ooxml-reference.md) for detailed tool workflows, batching strategies, unit conversion, and pipeline gotchas.
+For fine-grained formatting control beyond what Office.js properties expose, use the OOXML tools. See [ooxml-reference.md](references/ooxml-reference.md) for unit conversion, batching, and pipeline gotchas.
+
+### Preferred: Code mode (`edit_slide_xml` with `code`)
+
+One call — the code reads and modifies the pre-parsed DOM server-side. Only touched attributes change; everything else is preserved.
 
 1. **Discover**: `get_slide(slideIndex)` → find shape IDs
-2. **Read**: `read_slide_text` or `read_slide_xml` — get current XML
-3. **Modify**: Edit the XML (use `/pptx` skill knowledge)
-4. **Write**: `edit_slide_text` or `edit_slide_xml` — apply changes
-5. **Verify**: `get_slide_image` — confirm visual result
+2. **Edit + Write**: `edit_slide_xml` with `code` — DOM manipulation in one call
+3. **Verify**: `get_slide_image` — confirm visual result
 
-- `read_slide_text` / `edit_slide_text` — shape-level paragraph editing (preserves `<a:bodyPr>` and `<a:lstStyle>`)
-- `read_slide_xml` / `edit_slide_xml` — full slide or shape-level XML editing (full control)
-- For batch edits (2+ shapes), use full-slide `read/edit_slide_xml` to avoid multiple reimports
+**Sandbox context** (available in your code):
+
+| Variable | Type | Purpose |
+|---|---|---|
+| `doc` | `Document` | Pre-parsed slide XML DOM |
+| `findShapeById(id)` | `(string) → Element \| null` | Find `<p:sp>` by `<p:cNvPr id="...">` |
+| `NS_P` | `string` | PresentationML namespace |
+| `NS_A` | `string` | DrawingML namespace |
+| `escapeXml(text)` | `(string) → string` | Escape `& < > " '` for XML |
+| `serializeXml(node)` | `(Node) → string` | Serialize DOM node to XML string |
+| `DOMParser` | constructor | Create new DOM documents for fragments |
+
+**Example — remove rounded corners from multiple shapes:**
+```js
+edit_slide_xml(slideIndex: 0, code: `
+  var ids = ["5", "7", "9"];
+  for (var i = 0; i < ids.length; i++) {
+    var shape = findShapeById(ids[i]);
+    if (!shape) continue;
+    var geom = shape.getElementsByTagNameNS(NS_A, "prstGeom")[0];
+    if (!geom) continue;
+    var avLst = geom.getElementsByTagNameNS(NS_A, "avLst")[0];
+    if (avLst) while (avLst.firstChild) avLst.removeChild(avLst.firstChild);
+  }
+`, explanation: "Remove rounded corners")
+```
+
+**Example — change text color on a shape without losing formatting:**
+```js
+edit_slide_xml(slideIndex: 2, code: `
+  var shape = findShapeById("3");
+  var runs = shape.getElementsByTagNameNS(NS_A, "rPr");
+  for (var i = 0; i < runs.length; i++) {
+    var rPr = runs[i];
+    var fills = rPr.getElementsByTagNameNS(NS_A, "solidFill");
+    if (fills.length > 0) rPr.removeChild(fills[0]);
+    var fill = doc.createElementNS(NS_A, "a:solidFill");
+    var clr = doc.createElementNS(NS_A, "a:srgbClr");
+    clr.setAttribute("val", "FFFFFF");
+    fill.appendChild(clr);
+    rPr.insertBefore(fill, rPr.firstChild);
+  }
+`, explanation: "Set text to white")
+```
+
+### Legacy: XML string mode
+
+For single-shape paragraph edits, `read_slide_text` / `edit_slide_text` preserves `<a:bodyPr>` and `<a:lstStyle>` automatically. For full slide XML replacement, use `edit_slide_xml` with `xml` — but prefer code mode to avoid accidentally dropping attributes.
 
 ## Hard Limitations
 
@@ -292,10 +369,11 @@ Standard cards with a small colored RoundedRectangle "badge" overlaid (e.g., sho
 
 **XML:**
 - Always escape `&` as `&amp;` in `<a:t>` — #1 cause of missing text
-- OOXML is fully explicit — every omitted attribute is lost. Copy verbatim from `read_slide_text`.
+- OOXML is fully explicit — every omitted attribute is lost. **Prefer `format_shapes` for Office.js properties or `edit_slide_xml` with `code` for DOM manipulation. Both preserve untouched attributes. Avoid raw XML string replacement for formatting changes.**
 - No `<!-- -->` comments in code strings — sandbox rejects with `SES_HTML_COMMENT_REJECTED`
 
 **Office.js:**
+- **Never use Office.js to read text content** — `textRange.text` returns plain text with all formatting stripped. Use `read_slide_text` for formatted content. Office.js is for shape metadata (IDs, positions, dimensions) and simple writes.
 - Use `getTextFrameOrNullObject()` — never `.textFrame` directly (tables/images/charts throw)
 - Loaded values are snapshots — don't branch on stale reads after writes (`hasText` stays stale after setting `textRange.text`)
 - No `paragraphs` collection in PowerPoint Office.js
