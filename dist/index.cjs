@@ -49607,8 +49607,9 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
         const code = `
           var p = context.presentation;
           var slides = p.slides;
+          var ps = p.pageSetup;
           slides.load("items");
-          p.load("slideWidth,slideHeight");
+          ps.load("slideWidth,slideHeight");
           await context.sync();
           for (var i = 0; i < slides.items.length; i++) {
             slides.items[i].shapes.load("items");
@@ -49624,7 +49625,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
             }
             output.push({ index: i, id: slide.id, shapeCount: shapes.length, shapes: shapes });
           }
-          return { slideWidth: p.slideWidth, slideHeight: p.slideHeight, slides: output };
+          return { slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `;
         const target = pool2.resolveTarget(presentationId);
         const result = await pool2.sendCommand("executeCode", { code }, target.ws);
@@ -49649,8 +49650,9 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
         const code = `
           var p = context.presentation;
           var slides = p.slides;
+          var ps = p.pageSetup;
           slides.load("items");
-          p.load("slideWidth,slideHeight");
+          ps.load("slideWidth,slideHeight");
           await context.sync();
           if (${slideIndex} >= slides.items.length) {
             throw new Error("Slide index " + ${slideIndex} + " out of range (presentation has " + slides.items.length + " slides)");
@@ -49686,7 +49688,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
             }
             shapes.push(info);
           }
-          return { slideIndex: ${slideIndex}, slideId: slide.id, slideWidth: p.slideWidth, slideHeight: p.slideHeight, shapes: shapes };
+          return { slideIndex: ${slideIndex}, slideId: slide.id, slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, shapes: shapes };
         `;
         const target = pool2.resolveTarget(presentationId);
         const result = await pool2.sendCommand("executeCode", { code }, target.ws);
@@ -49711,8 +49713,9 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
         const code = `
           var p = context.presentation;
           var slides = p.slides;
+          var ps = p.pageSetup;
           slides.load("items");
-          p.load("slideWidth,slideHeight");
+          ps.load("slideWidth,slideHeight");
           await context.sync();
           if (${slideIndex} >= slides.items.length) {
             throw new Error("Slide index " + ${slideIndex} + " out of range (presentation has " + slides.items.length + " slides)");
@@ -49733,7 +49736,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
               height: s.height
             });
           }
-          return { slideIndex: ${slideIndex}, slideId: slide.id, slideWidth: p.slideWidth, slideHeight: p.slideHeight, shapes: shapes };
+          return { slideIndex: ${slideIndex}, slideId: slide.id, slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, shapes: shapes };
         `;
         const target = pool2.resolveTarget(presentationId);
         const result = await pool2.sendCommand("executeCode", { code }, target.ws);
@@ -49953,8 +49956,9 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
         const code = `
           var p = context.presentation;
           var slides = p.slides;
+          var ps = p.pageSetup;
           slides.load("items");
-          p.load("slideWidth,slideHeight");
+          ps.load("slideWidth,slideHeight");
           await context.sync();
           var requestedIndices = ${indicesJs};
           var indicesToProcess = requestedIndices || [];
@@ -49993,7 +49997,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
             slideData.imageBase64 = img.value;` : ""}
             output.push(slideData);
           }
-          return { slideCount: slides.items.length, slideWidth: p.slideWidth, slideHeight: p.slideHeight, slides: output };
+          return { slideCount: slides.items.length, slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `;
         const target = pool2.resolveTarget(presentationId);
         const result = await pool2.sendCommand("executeCode", { code }, target.ws, 12e4);
@@ -50370,10 +50374,10 @@ ${textParts.join("\n")}` : "\n(no text content)";
             shapes.push(info);
           }
           // Also get slide dimensions
-          var p = context.presentation;
-          p.load("slideWidth,slideHeight");
+          var ps = context.presentation.pageSetup;
+          ps.load("slideWidth,slideHeight");
           await context.sync();
-          return { shapes: shapes, slideWidth: p.slideWidth, slideHeight: p.slideHeight };
+          return { shapes: shapes, slideWidth: ps.slideWidth, slideHeight: ps.slideHeight };
         `;
         const slideData = await pool2.sendCommand("executeCode", { code }, target.ws);
         const issues = [];
