@@ -1084,13 +1084,13 @@ export function registerTools(
   // --- Tool: verify_slides ---
   server.tool(
     'verify_slides',
-    'Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, and tiny shapes. Returns a list of issues found. Uses the same shape data as inspect_slide — no OOXML needed.',
+    'Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, tiny shapes, and unused placeholders. Returns a list of issues found. Uses the same shape data as inspect_slide — no OOXML needed.',
     {
       slideIndex: z.number().int().min(0).describe('Zero-based slide index'),
       checks: z
-        .array(z.enum(['overlap', 'bounds', 'empty_text', 'tiny_shapes']))
+        .array(z.enum(['overlap', 'bounds', 'empty_text', 'tiny_shapes', 'unused_placeholder']))
         .optional()
-        .describe('Checks to run. Default: all four checks.'),
+        .describe('Checks to run. Default: all five checks.'),
       presentationId: z
         .string()
         .optional()
@@ -1099,7 +1099,7 @@ export function registerTools(
     async ({ slideIndex, checks, presentationId }) => {
       try {
         const target = pool.resolveTarget(presentationId)
-        const enabledChecks = checks ?? ['overlap', 'bounds', 'empty_text', 'tiny_shapes']
+        const enabledChecks = checks ?? ['overlap', 'bounds', 'empty_text', 'tiny_shapes', 'unused_placeholder']
 
         // Reuse inspect_slide's shape-loading logic
         const code = `
@@ -1124,9 +1124,19 @@ export function registerTools(
               height: s.height
             };
             try {
-              s.textFrame.load("textRange");
+              var tf = s.getTextFrameOrNullObject();
+              tf.load(["hasText", "textRange"]);
               await context.sync();
-              info.text = s.textFrame.textRange.text;
+              if (!tf.isNullObject) {
+                info.text = tf.hasText ? tf.textRange.text : "";
+                info.hasText = tf.hasText;
+              }
+            } catch (e) {}
+            try {
+              var pf = s.getPlaceholderOrNullObject();
+              pf.load("type");
+              await context.sync();
+              if (!pf.isNullObject) info.isPlaceholder = true;
             } catch (e) {}
             shapes.push(info);
           }
@@ -1145,6 +1155,8 @@ export function registerTools(
             width: number
             height: number
             text?: string
+            hasText?: boolean
+            isPlaceholder?: boolean
           }>
           slideWidth: number
           slideHeight: number
@@ -1224,6 +1236,20 @@ export function registerTools(
                 severity: 'warning',
                 shapeIds: [s.id],
                 description: `"${s.name}" is very small (${s.width.toFixed(1)} x ${s.height.toFixed(1)} pt)`,
+              })
+            }
+          }
+        }
+
+        // Unused placeholder check: placeholder shapes with no text content
+        if (enabledChecks.includes('unused_placeholder')) {
+          for (const s of shapes) {
+            if (s.isPlaceholder && !s.hasText) {
+              issues.push({
+                type: 'unused_placeholder',
+                severity: 'warning',
+                shapeIds: [s.id],
+                description: `"${s.name}" is an unused placeholder — delete it or fill it with content`,
               })
             }
           }
