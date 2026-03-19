@@ -15,12 +15,11 @@ argument-hint: <slide-index> [presentation-hint]
 
 ## Resolve presentation
 
-Call list_presentations to see which presentations are connected, then resolve which one to use:
-
-- If $ARGUMENTS[1] looks like a full presentationId (file path or generated ID) that exactly matches a connected presentation, use it directly — no need to call list_presentations.
-- If $ARGUMENTS[1] is a fuzzy hint (e.g., "ai enablement v3"), find the best match among connected presentations. If exactly one matches, use it. If ambiguous (multiple matches) or no match, stop and report the ambiguity — do NOT guess.
-- If $ARGUMENTS[1] is not provided and only one presentation is connected, use it.
-- If $ARGUMENTS[1] is not provided and multiple presentations are connected, stop and list them — do NOT guess.
+- If $ARGUMENTS[1] looks like a full presentationId (file path or generated ID), use it directly — skip list_presentations.
+- Otherwise, call list_presentations first. Then:
+  - If $ARGUMENTS[1] is a fuzzy hint (e.g., "ai enablement v3"), find the best match. If exactly one matches, use it. If ambiguous or no match, stop and report — do NOT guess.
+  - If $ARGUMENTS[1] is not provided and only one presentation is connected, use it.
+  - If $ARGUMENTS[1] is not provided and multiple are connected, stop and list them — do NOT guess.
 
 ## Capture and review
 
