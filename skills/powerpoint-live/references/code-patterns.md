@@ -114,8 +114,8 @@ var body2 = shapes.addTextBox("Description of the second feature.", { left: 585,
 body2.textFrame.textRange.font.size = 14;
 body2.textFrame.wordWrap = true;
 
-// Divider line
-shapes.addLine("Straight", { left: 0, top: 180, width: 960, height: 0 });
+// Divider line (use slideWidth from get_presentation/get_slide response)
+shapes.addLine("Straight", { left: 0, top: 180, width: slideWidth, height: 0 });
 
 await context.sync();
 ```
@@ -818,14 +818,18 @@ All values in **points** (1 pt = 1/72 inch).
 | Inches to points | inches * 72 |
 | cm to points | cm / 2.54 * 72 |
 
-Standard 16:9 slide: **960 x 540 pt** (13.33 x 7.5 in)
-Standard 4:3 slide: **960 x 720 pt** (13.33 x 10 in)
+**Always use actual slide dimensions** from `get_presentation`/`get_slide` response (`slideWidth`, `slideHeight`).
 
-| Reference | Value |
+Common slide sizes:
+- Standard 16:9: **960 × 540 pt** (13.33 × 7.5 in)
+- Standard 4:3: **960 × 720 pt** (13.33 × 10 in)
+- Widescreen: **1440 × 810 pt** (20 × 11.25 in)
+
+| Reference | Formula |
 |---|---|
-| Full width | 960 pt |
-| Center X | 480 pt |
-| Center Y (16:9) | 270 pt |
+| Full width | `slideWidth` |
+| Center X | `slideWidth / 2` |
+| Center Y | `slideHeight / 2` |
 | Typical margin | 36 pt (0.5 in) |
 | Title area | top 36 pt, height ~72 pt |
-| Content area (16:9) | top 120 pt to 504 pt |
+| Content area | top 120 pt to `slideHeight - 36` pt |
