@@ -43,7 +43,7 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
 
-All positioning values from `get_slide` are in **points** (1 pt = 1/72 inch). Standard 16:9 slide: 960 x 540 pt.
+All positioning values are in **points** (1 pt = 1/72 inch). **Always read `slideWidth` and `slideHeight` from `get_presentation` or `get_slide` response** — never assume 960 × 540. Common sizes: 960×540 (standard 16:9), 1440×810 (widescreen), 960×720 (4:3).
 
 ### Tool Return Values
 

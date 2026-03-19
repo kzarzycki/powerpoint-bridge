@@ -657,6 +657,8 @@ describe('MCP Tools', () => {
 
       pool.handleResponse(sentJson.id, 'response', {
         slideCount: 3,
+        slideWidth: 960,
+        slideHeight: 540,
         slides: [
           {
             index: 0,
@@ -690,7 +692,7 @@ describe('MCP Tools', () => {
 
       // Header text
       expect(content[0].type).toBe('text')
-      expect(content[0].text).toContain('3 total slides, showing 3')
+      expect(content[0].text).toContain('3 total slides (960 x 540 pt), showing 3')
 
       // Slide 0: image then text
       expect(content[1].type).toBe('image')
@@ -737,6 +739,8 @@ describe('MCP Tools', () => {
 
       pool.handleResponse(sentJson.id, 'response', {
         slideCount: 2,
+        slideWidth: 960,
+        slideHeight: 540,
         slides: [
           {
             index: 0,
@@ -781,7 +785,7 @@ describe('MCP Tools', () => {
       const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
       expect(sentJson.params.code).toContain('width: 960')
 
-      pool.handleResponse(sentJson.id, 'response', { slideCount: 0, slides: [] })
+      pool.handleResponse(sentJson.id, 'response', { slideCount: 0, slideWidth: 960, slideHeight: 540, slides: [] })
       await toolPromise
     })
 
@@ -806,7 +810,7 @@ describe('MCP Tools', () => {
       const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
       expect(sentJson.params.code).toContain('[0,1,2,5]')
 
-      pool.handleResponse(sentJson.id, 'response', { slideCount: 10, slides: [] })
+      pool.handleResponse(sentJson.id, 'response', { slideCount: 10, slideWidth: 960, slideHeight: 540, slides: [] })
       await toolPromise
     })
 

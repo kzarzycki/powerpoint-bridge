@@ -135,7 +135,7 @@ export function registerTools(
   // --- Tool: get_presentation ---
   server.tool(
     'get_presentation',
-    "Returns the structure of the currently open PowerPoint presentation including all slides with their IDs and shape summaries (count, names, types). Use this first to understand what's in the presentation before making changes.",
+    "Returns the structure of the currently open PowerPoint presentation including slide dimensions (slideWidth, slideHeight in points) and all slides with their IDs and shape summaries (count, names, types). Use this first to understand what's in the presentation before making changes.",
     {
       presentationId: z
         .string()
@@ -145,8 +145,10 @@ export function registerTools(
     async ({ presentationId }) => {
       try {
         const code = `
-          var slides = context.presentation.slides;
+          var p = context.presentation;
+          var slides = p.slides;
           slides.load("items");
+          p.load("slideWidth,slideHeight");
           await context.sync();
           for (var i = 0; i < slides.items.length; i++) {
             slides.items[i].shapes.load("items");
@@ -162,7 +164,7 @@ export function registerTools(
             }
             output.push({ index: i, id: slide.id, shapeCount: shapes.length, shapes: shapes });
           }
-          return output;
+          return { slideWidth: p.slideWidth, slideHeight: p.slideHeight, slides: output };
         `
         const target = pool.resolveTarget(presentationId)
         const result = await pool.sendCommand('executeCode', { code }, target.ws)
@@ -179,7 +181,7 @@ export function registerTools(
   // --- Tool: get_slide ---
   server.tool(
     'get_slide',
-    'Returns detailed information about all shapes on a specific slide, including text content, positions (left, top in points), sizes (width, height in points), and fill colors. Use slideIndex from get_presentation results (zero-based).',
+    'Returns slide dimensions (slideWidth, slideHeight in points) and detailed information about all shapes on a specific slide, including text content, positions (left, top in points), sizes (width, height in points), and fill colors. Use slideIndex from get_presentation results (zero-based).',
     {
       slideIndex: z.number().int().min(0).describe('Zero-based slide index from get_presentation results'),
       presentationId: z
@@ -190,8 +192,10 @@ export function registerTools(
     async ({ slideIndex, presentationId }) => {
       try {
         const code = `
-          var slides = context.presentation.slides;
+          var p = context.presentation;
+          var slides = p.slides;
           slides.load("items");
+          p.load("slideWidth,slideHeight");
           await context.sync();
           if (${slideIndex} >= slides.items.length) {
             throw new Error("Slide index " + ${slideIndex} + " out of range (presentation has " + slides.items.length + " slides)");
@@ -227,7 +231,7 @@ export function registerTools(
             }
             shapes.push(info);
           }
-          return { slideIndex: ${slideIndex}, slideId: slide.id, shapes: shapes };
+          return { slideIndex: ${slideIndex}, slideId: slide.id, slideWidth: p.slideWidth, slideHeight: p.slideHeight, shapes: shapes };
         `
         const target = pool.resolveTarget(presentationId)
         const result = await pool.sendCommand('executeCode', { code }, target.ws)
@@ -244,7 +248,7 @@ export function registerTools(
   // --- Tool: list_slide_shapes ---
   server.tool(
     'list_slide_shapes',
-    'List all shapes on a slide with their IDs, types, and positions. Lighter than get_slide — omits text and fill data.',
+    'List all shapes on a slide with their IDs, types, and positions, plus slide dimensions (slideWidth, slideHeight in points). Lighter than get_slide — omits text and fill data.',
     {
       slideIndex: z.number().int().min(0).describe('Zero-based slide index from get_presentation results'),
       presentationId: z
@@ -255,8 +259,10 @@ export function registerTools(
     async ({ slideIndex, presentationId }) => {
       try {
         const code = `
-          var slides = context.presentation.slides;
+          var p = context.presentation;
+          var slides = p.slides;
           slides.load("items");
+          p.load("slideWidth,slideHeight");
           await context.sync();
           if (${slideIndex} >= slides.items.length) {
             throw new Error("Slide index " + ${slideIndex} + " out of range (presentation has " + slides.items.length + " slides)");
@@ -277,7 +283,7 @@ export function registerTools(
               height: s.height
             });
           }
-          return { slideIndex: ${slideIndex}, slideId: slide.id, shapes: shapes };
+          return { slideIndex: ${slideIndex}, slideId: slide.id, slideWidth: p.slideWidth, slideHeight: p.slideHeight, shapes: shapes };
         `
         const target = pool.resolveTarget(presentationId)
         const result = await pool.sendCommand('executeCode', { code }, target.ws)
@@ -581,8 +587,10 @@ export function registerTools(
         const indicesJs = indices ? JSON.stringify(indices) : 'null'
 
         const code = `
-          var slides = context.presentation.slides;
+          var p = context.presentation;
+          var slides = p.slides;
           slides.load("items");
+          p.load("slideWidth,slideHeight");
           await context.sync();
           var requestedIndices = ${indicesJs};
           var indicesToProcess = requestedIndices || [];
@@ -625,11 +633,13 @@ export function registerTools(
             }
             output.push(slideData);
           }
-          return { slideCount: slides.items.length, slides: output };
+          return { slideCount: slides.items.length, slideWidth: p.slideWidth, slideHeight: p.slideHeight, slides: output };
         `
         const target = pool.resolveTarget(presentationId)
         const result = (await pool.sendCommand('executeCode', { code }, target.ws, 120_000)) as {
           slideCount: number
+          slideWidth: number
+          slideHeight: number
           slides: Array<{
             index: number
             id: string
@@ -643,7 +653,7 @@ export function registerTools(
         // Build interleaved content blocks
         const content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = []
         const showing = result.slides.length
-        const header = `Deck overview: ${result.slideCount} total slides, showing ${showing}${warning ?? ''}`
+        const header = `Deck overview: ${result.slideCount} total slides (${result.slideWidth} x ${result.slideHeight} pt), showing ${showing}${warning ?? ''}`
         content.push({ type: 'text' as const, text: header })
 
         for (const slide of result.slides) {
