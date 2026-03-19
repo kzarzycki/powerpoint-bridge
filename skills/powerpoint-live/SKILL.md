@@ -193,12 +193,15 @@ Do NOT declare success until the verify → fix → re-verify loop converges. Sk
 
 If overlaps/overflow: shorten text, reduce font, reposition body content (not title), or split across slides.
 
+**Layout background rule**: NEVER create full-bleed rectangles to cover a layout-provided background. The layout background is part of a design system — it determines text colors, placeholder styling, and chrome visibility (logo, breadcrumb, dividers). Covering it destroys all of this and forces manual recreation. If a slide has the wrong background, switch to a layout that has the correct one.
+
 **Manual checklist** (verify before declaring done):
 - All placeholder shapes either filled with content or deleted
 - Text color contrasts slide background on every shape
 - No unused images or stale shapes from previous slide versions
 - No shape text below 14pt
 - All shapes have explicit `left` + `top` set
+- No full-bleed rectangles covering layout backgrounds
 
 **Intentional overlaps**: When using card patterns (TextBoxes + icons inside RoundedRectangles), `verify_slides` will report many overlaps — these are expected by design. Also, decorative HR lines spanning the full width will overlap with adjacent elements. Only act on overlaps between shapes that should NOT be layered, or on overflow (shapes going off-slide).
 
