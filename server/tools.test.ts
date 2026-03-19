@@ -94,17 +94,17 @@ describe('MCP Tools', () => {
       'edit_slide_zip',
       'execute_officejs',
       'format_shapes',
-      'get_deck_overview',
       'get_local_copy',
-      'get_presentation',
-      'get_slide',
-      'get_slide_image',
       'insert_image',
+      'inspect_slide',
       'list_presentations',
-      'list_slide_shapes',
+      'list_slides',
+      'preview_deck',
       'read_slide_text',
       'read_slide_xml',
       'read_slide_zip',
+      'scan_slide',
+      'screenshot_slide',
       'search_text',
       'verify_slides',
     ])
@@ -137,17 +137,17 @@ describe('MCP Tools', () => {
     })
   })
 
-  describe('get_presentation', () => {
+  describe('list_slides', () => {
     it('returns error with no connections', async () => {
       const { client } = await setupMcpClient(pool)
-      const result = await client.callTool({ name: 'get_presentation', arguments: {} })
+      const result = await client.callTool({ name: 'list_slides', arguments: {} })
       expect(result.isError).toBe(true)
       const text = (result.content as Array<{ text: string }>)[0].text
       expect(text).toContain('No presentations connected')
     })
   })
 
-  describe('get_slide_image', () => {
+  describe('screenshot_slide', () => {
     it('returns image content block on success', async () => {
       const ws = mockWs()
       pool.add('test.pptx', {
@@ -160,7 +160,7 @@ describe('MCP Tools', () => {
       const { client } = await setupMcpClient(pool)
 
       const toolPromise = client.callTool({
-        name: 'get_slide_image',
+        name: 'screenshot_slide',
         arguments: { slideIndex: 0 },
       })
 
@@ -201,7 +201,7 @@ describe('MCP Tools', () => {
       const { client } = await setupMcpClient(pool)
 
       const toolPromise = client.callTool({
-        name: 'get_slide_image',
+        name: 'screenshot_slide',
         arguments: { slideIndex: 0, width: 1280, height: 720 },
       })
 
@@ -223,7 +223,7 @@ describe('MCP Tools', () => {
     it('returns error when no connections', async () => {
       const { client } = await setupMcpClient(pool)
       const result = await client.callTool({
-        name: 'get_slide_image',
+        name: 'screenshot_slide',
         arguments: { slideIndex: 0 },
       })
       expect(result.isError).toBe(true)
@@ -631,7 +631,7 @@ describe('MCP Tools', () => {
     })
   })
 
-  describe('get_deck_overview', () => {
+  describe('preview_deck', () => {
     it('returns interleaved image and text blocks', async () => {
       const ws = mockWs()
       pool.add('test.pptx', {
@@ -644,7 +644,7 @@ describe('MCP Tools', () => {
       const { client } = await setupMcpClient(pool)
 
       const toolPromise = client.callTool({
-        name: 'get_deck_overview',
+        name: 'preview_deck',
         arguments: {},
       })
 
@@ -727,7 +727,7 @@ describe('MCP Tools', () => {
       const { client } = await setupMcpClient(pool)
 
       const toolPromise = client.callTool({
-        name: 'get_deck_overview',
+        name: 'preview_deck',
         arguments: { includeImages: false },
       })
 
@@ -776,7 +776,7 @@ describe('MCP Tools', () => {
       const { client } = await setupMcpClient(pool)
 
       const toolPromise = client.callTool({
-        name: 'get_deck_overview',
+        name: 'preview_deck',
         arguments: { imageWidth: 960 },
       })
 
@@ -801,7 +801,7 @@ describe('MCP Tools', () => {
       const { client } = await setupMcpClient(pool)
 
       const toolPromise = client.callTool({
-        name: 'get_deck_overview',
+        name: 'preview_deck',
         arguments: { slideRange: '0-2,5' },
       })
 
@@ -817,7 +817,7 @@ describe('MCP Tools', () => {
     it('returns error when no connections', async () => {
       const { client } = await setupMcpClient(pool)
       const result = await client.callTool({
-        name: 'get_deck_overview',
+        name: 'preview_deck',
         arguments: {},
       })
       expect(result.isError).toBe(true)
@@ -1571,33 +1571,39 @@ describe('MCP Tools', () => {
     })
   })
 
-  describe('list_slide_shapes', () => {
+  describe('scan_slide', () => {
     it('returns shape objects with correct fields', async () => {
       const ws = mockWs()
       pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
       const { client } = await setupMcpClient(pool)
 
       const toolPromise = client.callTool({
-        name: 'list_slide_shapes',
-        arguments: { slideIndex: 0 },
+        name: 'scan_slide',
+        arguments: { slideRange: '0' },
       })
 
       await new Promise((r) => setTimeout(r, 10))
       const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
 
       pool.handleResponse(sentJson.id, 'response', {
-        slideIndex: 0,
-        slideId: 'slide-1',
-        shapes: [
-          { id: '10', name: 'Title 1', type: 'Rectangle', left: 50, top: 20, width: 400, height: 60 },
-          { id: '11', name: 'Content 2', type: 'TextBox', left: 50, top: 100, width: 400, height: 300 },
+        slideWidth: 960,
+        slideHeight: 540,
+        slides: [
+          {
+            slideIndex: 0,
+            slideId: 'slide-1',
+            shapes: [
+              { id: '10', name: 'Title 1', type: 'Rectangle', left: 50, top: 20, width: 400, height: 60 },
+              { id: '11', name: 'Content 2', type: 'TextBox', left: 50, top: 100, width: 400, height: 300 },
+            ],
+          },
         ],
       })
 
       const result = await toolPromise
       const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
-      expect(parsed.shapes).toHaveLength(2)
-      expect(parsed.shapes[0]).toEqual({
+      expect(parsed.slides[0].shapes).toHaveLength(2)
+      expect(parsed.slides[0].shapes[0]).toEqual({
         id: '10',
         name: 'Title 1',
         type: 'Rectangle',
@@ -1614,8 +1620,8 @@ describe('MCP Tools', () => {
       const { client } = await setupMcpClient(pool)
 
       const toolPromise = client.callTool({
-        name: 'list_slide_shapes',
-        arguments: { slideIndex: 0 },
+        name: 'scan_slide',
+        arguments: { slideRange: '0' },
       })
 
       await new Promise((r) => setTimeout(r, 10))
@@ -1627,15 +1633,21 @@ describe('MCP Tools', () => {
       expect(sentJson.params.code).not.toContain('textRange')
 
       pool.handleResponse(sentJson.id, 'response', {
-        slideIndex: 0,
-        slideId: 'slide-1',
-        shapes: [{ id: '10', name: 'Title 1', type: 'Rectangle', left: 50, top: 20, width: 400, height: 60 }],
+        slideWidth: 960,
+        slideHeight: 540,
+        slides: [
+          {
+            slideIndex: 0,
+            slideId: 'slide-1',
+            shapes: [{ id: '10', name: 'Title 1', type: 'Rectangle', left: 50, top: 20, width: 400, height: 60 }],
+          },
+        ],
       })
 
       const result = await toolPromise
       const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text)
-      expect(parsed.shapes[0]).not.toHaveProperty('text')
-      expect(parsed.shapes[0]).not.toHaveProperty('fill')
+      expect(parsed.slides[0].shapes[0]).not.toHaveProperty('text')
+      expect(parsed.slides[0].shapes[0]).not.toHaveProperty('fill')
     })
   })
 

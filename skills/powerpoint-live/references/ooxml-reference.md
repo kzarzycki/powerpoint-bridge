@@ -17,27 +17,27 @@
 
 ### Preferred: Code mode (1 call)
 
-1. `get_slide(slideIndex)` → find shape IDs
+1. `inspect_slide(slideRange: "N")` → find shape IDs
 2. `edit_slide_xml(slideIndex, code: "...")` → DOM manipulation server-side (read + modify in one call)
-3. `get_slide_image(slideIndex)` → visual verification
+3. `screenshot_slide(slideIndex)` → visual verification
 
 Code mode receives a pre-parsed DOM with helpers. See SKILL.md "OOXML Editing Workflow" for the full sandbox context and examples.
 
 ### Legacy: XML string mode (2+ calls)
 
-1. `get_slide(slideIndex)` → find shape IDs
+1. `inspect_slide(slideRange: "N")` → find shape IDs
 2. `read_slide_text(slideIndex, shapeId)` or `read_slide_xml(slideIndex, shapeId?)`
 3. Modify the XML using `/pptx` skill knowledge
 4. `edit_slide_text(slideIndex, shapeId, xml)` or `edit_slide_xml(slideIndex, xml, shapeId?)`
-5. `get_slide_image(slideIndex)` → visual verification
+5. `screenshot_slide(slideIndex)` → visual verification
 
 Always inspect before modifying. Always verify after.
 
 ## Shape ID Mapping
 
-- `get_slide` returns shapes with an `id` field (e.g. `"5"`)
+- `inspect_slide` returns shapes with an `id` field (e.g. `"5"`)
 - This matches `<p:cNvPr id="5">` in the OOXML
-- Always use `get_slide` first to discover IDs — don't guess
+- Always use `inspect_slide` first to discover IDs — don't guess
 - Shape IDs may change after reimport (Office.js assigns new IDs on `insertSlidesFromBase64`)
 
 ## read_slide_text / edit_slide_text
@@ -99,7 +99,7 @@ edit_slide_xml(slideIndex: 0, xml: modified)  // single reimport
 
 | Context | Unit | 1 inch = |
 |---------|------|----------|
-| `get_slide` / Office.js | Points | 72 pt |
+| `inspect_slide` / Office.js | Points | 72 pt |
 | OOXML (`<a:off>`, `<a:ext>`) | EMU | 914,400 EMU |
 
 Conversion: **EMU = points × 12,700**
@@ -111,7 +111,7 @@ Conversion: **EMU = points × 12,700**
 | 1 inch | 72 pt | 914,400 |
 | 1 cm | 28.35 pt | 360,000 |
 
-When moving positions from `get_slide` output into OOXML, multiply by 12,700.
+When moving positions from `inspect_slide` output into OOXML, multiply by 12,700.
 
 ## Export/Reimport Mechanics
 
@@ -536,7 +536,7 @@ zip.file("ppt/slides/slide1.xml", new XMLSerializer().serializeToString(doc));
 markDirty();
 ```
 
-Always find shapes by ID (not name — names are locale-dependent). Shape IDs come from `get_slide` output. The exported slide is always `ppt/slides/slide1.xml` in the zip regardless of `slideIndex`.
+Always find shapes by ID (not name — names are locale-dependent). Shape IDs come from `inspect_slide` output. The exported slide is always `ppt/slides/slide1.xml` in the zip regardless of `slideIndex`.
 
 ## Diagrams and Infographics via OOXML
 
@@ -644,7 +644,7 @@ Adding a hyperlink requires BOTH an XML attribute in the run properties AND a re
 
 ## Pipeline-Specific Gotchas
 
-1. **Shape IDs change after reimport** — Office.js assigns new IDs on `insertSlidesFromBase64`. Always re-read `get_slide` after editing if you need to reference shapes again.
+1. **Shape IDs change after reimport** — Office.js assigns new IDs on `insertSlidesFromBase64`. Always re-read `inspect_slide` after editing if you need to reference shapes again.
 
 2. **Edit slides in reverse index order** — each reimport deletes and reinserts the slide. If editing slides 0, 1, 2, edit in order 2 → 1 → 0 to avoid index shifting.
 

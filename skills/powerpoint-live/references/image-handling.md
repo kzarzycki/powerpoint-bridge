@@ -32,7 +32,7 @@ img.save("logo-transparent.png")
 Size logos by **perceived visual weight**, not bounding box dimensions. Some logos have generous padding, making same-height logos look very different in size.
 
 After inserting all logos in a row:
-1. `get_slide` to read each logo's actual width
+1. `inspect_slide` to read each logo's actual width
 2. Calculate even spacing based on actual dimensions
 3. `execute_officejs` to reposition for balanced distribution
 
@@ -89,7 +89,7 @@ Prefer **SVG** (vector, scales perfectly) or **PNG with transparent background**
 ## Workflow
 
 Before adding visual elements to a slide:
-1. **Inspect** — `get_slide_image` to see current state
+1. **Inspect** — `screenshot_slide` to see current state
 2. **Propose** — offer the user visual options (style treatment, count, labels, placement)
 3. **Confirm** — get user preference
 4. **Execute** — build per their choice

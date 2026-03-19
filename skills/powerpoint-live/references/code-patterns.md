@@ -114,7 +114,7 @@ var body2 = shapes.addTextBox("Description of the second feature.", { left: 585,
 body2.textFrame.textRange.font.size = 14;
 body2.textFrame.wordWrap = true;
 
-// Divider line (use slideWidth from get_presentation/get_slide response)
+// Divider line (use slideWidth from list_slides/inspect_slide response)
 shapes.addLine("Straight", { left: 0, top: 180, width: slideWidth, height: 0 });
 
 await context.sync();
@@ -126,7 +126,7 @@ Build all shapes in one batch, then call `context.sync()` once at the end.
 
 Template slides typically have placeholder shapes from the slide layout (metadata bar, title, slide number, footer) and sometimes decorative elements (HR divider lines). Before building content:
 
-1. List existing shapes via `get_slide` or `list_slide_shapes` to see what placeholders exist
+1. List existing shapes via `inspect_slide` or `scan_slide` to see what placeholders exist
 2. Note the placeholder positions — especially the title area (typically top ~108pt) and footer area (bottom ~763pt)
 3. Build your content shapes BELOW the existing chrome elements, not overlapping them
 4. Set text in existing placeholders (title, subtitle) rather than creating new TextBoxes for those roles
@@ -376,22 +376,22 @@ var shape = shapes.addTable(3, 4, {
 
 ## Deck Overview
 
-Use the `get_deck_overview` MCP tool to review an entire presentation efficiently. Returns thumbnails interleaved with text metadata in one call — far cheaper than sequential `get_slide` + `get_slide_image` per slide.
+Use the `preview_deck` MCP tool to review an entire presentation efficiently. Returns thumbnails interleaved with text metadata in one call — far cheaper than sequential `inspect_slide` + `screenshot_slide` per slide.
 
 ```
-get_deck_overview()                              // all slides, thumbnails at 480px
-get_deck_overview(slideRange: "0-5")             // first 6 slides only
-get_deck_overview(slideRange: "2,4,7")           // specific slides
-get_deck_overview(includeImages: false)           // text-only (fastest)
-get_deck_overview(imageWidth: 720)                // larger thumbnails
+preview_deck()                              // all slides, thumbnails at 480px
+preview_deck(slideRange: "0-5")             // first 6 slides only
+preview_deck(slideRange: "2,4,7")           // specific slides
+preview_deck(includeImages: false)           // text-only (fastest)
+preview_deck(imageWidth: 720)                // larger thumbnails
 ```
 
 ## Screenshots
 
-Always use the `get_slide_image` MCP tool for visual screenshots. Do NOT call `getImageAsBase64` through `execute_officejs` — the raw Base64 text overflows the token limit.
+Always use the `screenshot_slide` MCP tool for visual screenshots. Do NOT call `getImageAsBase64` through `execute_officejs` — the raw Base64 text overflows the token limit.
 
 ```javascript
-// Only if you need the raw Base64 data (prefer get_slide_image tool instead)
+// Only if you need the raw Base64 data (prefer screenshot_slide tool instead)
 var slide = slides.items[0];
 var result = slide.getImageAsBase64({ width: 720 });
 await context.sync();
@@ -602,7 +602,7 @@ await context.sync();
 2. **Structural check:** `verify_slides(slideIndex)` — overlap, bounds, empty text, tiny shapes
 3. **Visual check:** Spawn a subagent for independent visual review. The subagent has no conversation context, providing an objective check. Use this prompt (replace N with slide index):
 
-> Call get_slide_image(slideIndex: N) to capture the slide, then review it for: text overflow or truncation, overlapping shapes or text, unreadable text (too small, poor contrast), misalignment or inconsistent spacing, empty or unused space, inconsistent styling (mixed fonts, colors, sizes). Return a JSON array of issues found, each with: severity (error/warning/info), category, description, and suggestion. If no issues found, return [].
+> Call screenshot_slide(slideIndex: N) to capture the slide, then review it for: text overflow or truncation, overlapping shapes or text, unreadable text (too small, poor contrast), misalignment or inconsistent spacing, empty or unused space, inconsistent styling (mixed fonts, colors, sizes). Return a JSON array of issues found, each with: severity (error/warning/info), category, description, and suggestion. If no issues found, return [].
 
 4. **Fix and re-verify** until clean.
 
@@ -818,7 +818,7 @@ All values in **points** (1 pt = 1/72 inch).
 | Inches to points | inches * 72 |
 | cm to points | cm / 2.54 * 72 |
 
-**Always use actual slide dimensions** from `get_presentation`/`get_slide` response (`slideWidth`, `slideHeight`).
+**Always use actual slide dimensions** from `list_slides`/`inspect_slide` response (`slideWidth`, `slideHeight`).
 
 Common slide sizes:
 - Standard 16:9: **960 × 540 pt** (13.33 × 7.5 in)
