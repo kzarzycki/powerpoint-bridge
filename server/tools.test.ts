@@ -81,7 +81,7 @@ describe('MCP Tools', () => {
     pool = new ConnectionPool(100)
   })
 
-  it('lists all 19 tools', async () => {
+  it('lists all 20 tools', async () => {
     const { client } = await setupMcpClient(pool)
     const result = await client.listTools()
     const names = result.tools.map((t) => t.name).sort()
@@ -93,6 +93,7 @@ describe('MCP Tools', () => {
       'edit_slide_xml',
       'edit_slide_zip',
       'execute_officejs',
+      'format_shapes',
       'get_deck_overview',
       'get_local_copy',
       'get_presentation',
@@ -1234,6 +1235,116 @@ describe('MCP Tools', () => {
       pool.handleResponse(sentJson.id, 'response', { base64, slideId: 'slide-0', prevSlideId: null })
 
       const result = await toolPromise
+      expect(result.isError).toBe(true)
+    })
+  })
+
+  describe('format_shapes', () => {
+    it('generates Office.js code with setSolidColor for fill', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'format_shapes',
+        arguments: {
+          slideIndex: 0,
+          shapes: [{ id: '2', fill: '1A1A1E' }],
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      expect(sentJson.params.code).toContain('setSolidColor')
+      expect(sentJson.params.code).toContain('1A1A1E')
+      pool.handleResponse(sentJson.id, 'response', { success: true })
+
+      const result = await toolPromise
+      const text = (result.content as Array<{ text: string }>)[0].text
+      expect(JSON.parse(text).success).toBe(true)
+    })
+
+    it('generates font property assignments', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'format_shapes',
+        arguments: {
+          slideIndex: 0,
+          shapes: [{ id: '5', font: { bold: true, size: 16, color: 'FFFFFF', name: 'Arial' } }],
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      const code = sentJson.params.code
+      expect(code).toContain('font.bold = true')
+      expect(code).toContain('font.size = 16')
+      expect(code).toContain('font.color = "FFFFFF"')
+      expect(code).toContain('font.name = "Arial"')
+      pool.handleResponse(sentJson.id, 'response', { success: true })
+
+      await toolPromise
+    })
+
+    it('generates code for multiple shapes', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'format_shapes',
+        arguments: {
+          slideIndex: 1,
+          shapes: [
+            { id: '2', fill: 'FF0000' },
+            { id: '5', fill: '00FF00', font: { bold: false } },
+          ],
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      const code = sentJson.params.code
+      expect(code).toContain('"2"')
+      expect(code).toContain('"5"')
+      expect(code).toContain('slides.items[1]')
+      pool.handleResponse(sentJson.id, 'response', { success: true })
+
+      await toolPromise
+    })
+
+    it('skips fill code when only font specified', async () => {
+      const ws = mockWs()
+      pool.add('test.pptx', { ws, ready: true, presentationId: 'test.pptx', filePath: null })
+      const { client } = await setupMcpClient(pool)
+
+      const toolPromise = client.callTool({
+        name: 'format_shapes',
+        arguments: {
+          slideIndex: 0,
+          shapes: [{ id: '2', font: { italic: true } }],
+        },
+      })
+
+      await new Promise((r) => setTimeout(r, 10))
+      const sentJson = JSON.parse((ws.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+      const code = sentJson.params.code
+      expect(code).not.toContain('setSolidColor')
+      expect(code).toContain('font.italic = true')
+      pool.handleResponse(sentJson.id, 'response', { success: true })
+
+      await toolPromise
+    })
+
+    it('returns error when no connections', async () => {
+      const { client } = await setupMcpClient(pool)
+      const result = await client.callTool({
+        name: 'format_shapes',
+        arguments: { slideIndex: 0, shapes: [{ id: '2', fill: 'FF0000' }] },
+      })
       expect(result.isError).toBe(true)
     })
   })
