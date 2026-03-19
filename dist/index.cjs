@@ -49393,7 +49393,7 @@ async function reimportSlide(pool2, modifiedBase64, slideId, prevSlideId, target
     if (!found) {
       throw new Error("Original slide not found for reimport (ID: ${slideId})");
     }
-    // Batch delete + insert in one sync \u2014 if insert fails, delete should roll back
+    // Batch delete + insert in one sync to reduce the window for partial failure
     context.presentation.insertSlidesFromBase64("${modifiedBase64}", ${optionsStr});
     await context.sync();
     // Verify slide count is unchanged (deleted one, inserted one)
