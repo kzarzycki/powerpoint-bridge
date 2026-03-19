@@ -2,17 +2,21 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { DOMParser } from '@xmldom/xmldom'
 import { z } from 'zod'
 import type { ConnectionPool } from './bridge.ts'
 import { buildChartRelationship, buildChartXml, buildGraphicFrame, resolveChartPosition } from './chart-builder.ts'
 import {
   autoRegisterContentTypes,
+  escapeXml,
   exportSlide,
   extractParagraphs,
   extractSlideXmlFromZip,
   extractZipFiles,
   findShapeById,
   listZipPaths,
+  NS_A,
+  NS_P,
   parseSlideXml,
   reimportSlide,
   replaceParagraphs,
@@ -891,40 +895,84 @@ export function registerTools(
   // --- Tool: edit_slide_xml ---
   server.tool(
     'edit_slide_xml',
-    "Replace the full slide XML or a specific shape's XML and reimport. Use read_slide_xml first to get the current XML, modify it, then write it back. The slide is exported, modified server-side, and reimported — data never enters Claude's context.",
+    "Edit slide XML and reimport. Two modes: (1) xml mode — provide finished XML string (use read_slide_xml first to get current XML), (2) code mode — provide JS code that manipulates the pre-parsed DOM (receives: doc, findShapeById, NS_P, NS_A, escapeXml, serializeXml, DOMParser). Code mode preserves untouched attributes. The slide is exported, modified server-side, and reimported — data never enters Claude's context.",
     {
       slideIndex: z.number().int().min(0).describe('Zero-based slide index'),
       xml: z
         .string()
-        .describe("Modified XML — full slide XML or a single shape's <p:sp> element (when shapeId is provided)"),
+        .optional()
+        .describe(
+          "Modified XML — full slide XML or a single shape's <p:sp> element (when shapeId is provided). Mutually exclusive with 'code'.",
+        ),
+      code: z
+        .string()
+        .optional()
+        .describe(
+          "JS code that manipulates the pre-parsed slide DOM. Receives: doc (Document), findShapeById(id) → Element|null, NS_P, NS_A (namespace strings), escapeXml(text), serializeXml(node), DOMParser. Mutually exclusive with 'xml'.",
+        ),
+      explanation: z
+        .string()
+        .optional()
+        .describe('Brief description of what the code does (for logging, max 50 chars). Only used with code mode.'),
       shapeId: z
         .string()
         .optional()
         .describe(
-          "Optional shape ID. If provided, replaces only that shape's <p:sp> element instead of the full slide XML.",
+          "Optional shape ID (xml mode only). If provided, replaces only that shape's <p:sp> element instead of the full slide XML.",
         ),
       presentationId: z
         .string()
         .optional()
         .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
     },
-    async ({ slideIndex, xml, shapeId, presentationId }) => {
+    async ({ slideIndex, xml, code, shapeId, presentationId }) => {
+      if ((!xml && !code) || (xml && code)) {
+        return {
+          content: [
+            { type: 'text' as const, text: "Error: Provide either 'xml' or 'code', not both and not neither." },
+          ],
+          isError: true,
+        }
+      }
+
       try {
         const target = pool.resolveTarget(presentationId)
         const exported = await exportSlide(pool, slideIndex, target.ws)
         const { zip, xmlString } = await extractSlideXmlFromZip(exported.base64)
 
         let finalXml: string
-        if (shapeId) {
+        if (code) {
+          // Code mode: run agent-provided JS against the pre-parsed DOM
+          const doc = parseSlideXml(xmlString)
+          const sandbox = {
+            doc,
+            findShapeById: (id: string) => findShapeById(doc, id),
+            NS_P,
+            NS_A,
+            escapeXml,
+            serializeXml: (node: Document | Element) => serializeXml(node),
+            DOMParser,
+          }
+          try {
+            const keys = Object.keys(sandbox)
+            const values = Object.values(sandbox)
+            const fn = new Function(...keys, code)
+            fn(...values)
+          } catch (codeErr: unknown) {
+            const msg = codeErr instanceof Error ? codeErr.message : String(codeErr)
+            throw new Error(`Code execution error: ${msg}`)
+          }
+          finalXml = serializeXml(doc)
+        } else if (shapeId) {
           const doc = parseSlideXml(xmlString)
           const shape = findShapeById(doc, shapeId)
           if (!shape) {
             throw new Error(`Shape with ID "${shapeId}" not found on slide ${slideIndex}`)
           }
-          replaceShape(doc, shape, xml)
+          replaceShape(doc, shape, xml!)
           finalXml = serializeXml(doc)
         } else {
-          finalXml = xml
+          finalXml = xml!
         }
 
         const modifiedBase64 = await updateSlideXmlInZip(zip, finalXml)
