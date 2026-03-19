@@ -13,9 +13,19 @@
 | `edit_slide_text` | Single-shape paragraph editing with OOXML (preserves bodyPr/lstStyle) |
 | File-based (`get_local_copy` + `/pptx` skill) | Charts, master/theme editing, rels, Content_Types — anything beyond slide XML |
 
-## Workflow: Discover → Read → Modify → Write → Verify
+## Workflow
 
-1. `get_slide(slideIndex)` → find shape IDs (the `id` field on each shape)
+### Preferred: Code mode (1 call)
+
+1. `get_slide(slideIndex)` → find shape IDs
+2. `edit_slide_xml(slideIndex, code: "...")` → DOM manipulation server-side (read + modify in one call)
+3. `get_slide_image(slideIndex)` → visual verification
+
+Code mode receives a pre-parsed DOM with helpers. See SKILL.md "OOXML Editing Workflow" for the full sandbox context and examples.
+
+### Legacy: XML string mode (2+ calls)
+
+1. `get_slide(slideIndex)` → find shape IDs
 2. `read_slide_text(slideIndex, shapeId)` or `read_slide_xml(slideIndex, shapeId?)`
 3. Modify the XML using `/pptx` skill knowledge
 4. `edit_slide_text(slideIndex, shapeId, xml)` or `edit_slide_xml(slideIndex, xml, shapeId?)`

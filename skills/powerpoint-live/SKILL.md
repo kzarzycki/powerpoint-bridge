@@ -252,17 +252,64 @@ For .pptx template files: use `copy_slides` to import slides from another open p
 
 **Prerequisite**: Load the `/pptx` skill for OOXML structure knowledge (namespaces, element anatomy, formatting rules).
 
-For fine-grained formatting control beyond what Office.js properties expose, use the OOXML tools to read/modify raw slide XML. See [ooxml-reference.md](references/ooxml-reference.md) for detailed tool workflows, batching strategies, unit conversion, and pipeline gotchas.
+For fine-grained formatting control beyond what Office.js properties expose, use the OOXML tools. See [ooxml-reference.md](references/ooxml-reference.md) for unit conversion, batching, and pipeline gotchas.
+
+### Preferred: Code mode (`edit_slide_xml` with `code`)
+
+One call — the code reads and modifies the pre-parsed DOM server-side. Only touched attributes change; everything else is preserved.
 
 1. **Discover**: `get_slide(slideIndex)` → find shape IDs
-2. **Read**: `read_slide_text` or `read_slide_xml` — get current XML
-3. **Modify**: Edit the XML (use `/pptx` skill knowledge)
-4. **Write**: `edit_slide_text` or `edit_slide_xml` — apply changes
-5. **Verify**: `get_slide_image` — confirm visual result
+2. **Edit + Write**: `edit_slide_xml` with `code` — DOM manipulation in one call
+3. **Verify**: `get_slide_image` — confirm visual result
 
-- `read_slide_text` / `edit_slide_text` — shape-level paragraph editing (preserves `<a:bodyPr>` and `<a:lstStyle>`)
-- `read_slide_xml` / `edit_slide_xml` — full slide or shape-level XML editing (full control)
-- For batch edits (2+ shapes), use full-slide `read/edit_slide_xml` to avoid multiple reimports
+**Sandbox context** (available in your code):
+
+| Variable | Type | Purpose |
+|---|---|---|
+| `doc` | `Document` | Pre-parsed slide XML DOM |
+| `findShapeById(id)` | `(string) → Element \| null` | Find `<p:sp>` by `<p:cNvPr id="...">` |
+| `NS_P` | `string` | PresentationML namespace |
+| `NS_A` | `string` | DrawingML namespace |
+| `escapeXml(text)` | `(string) → string` | Escape `& < > " '` for XML |
+| `serializeXml(node)` | `(Node) → string` | Serialize DOM node to XML string |
+| `DOMParser` | constructor | Create new DOM documents for fragments |
+
+**Example — remove rounded corners from multiple shapes:**
+```js
+edit_slide_xml(slideIndex: 0, code: `
+  var ids = ["5", "7", "9"];
+  for (var i = 0; i < ids.length; i++) {
+    var shape = findShapeById(ids[i]);
+    if (!shape) continue;
+    var geom = shape.getElementsByTagNameNS(NS_A, "prstGeom")[0];
+    if (!geom) continue;
+    var avLst = geom.getElementsByTagNameNS(NS_A, "avLst")[0];
+    if (avLst) while (avLst.firstChild) avLst.removeChild(avLst.firstChild);
+  }
+`, explanation: "Remove rounded corners")
+```
+
+**Example — change text color on a shape without losing formatting:**
+```js
+edit_slide_xml(slideIndex: 2, code: `
+  var shape = findShapeById("3");
+  var runs = shape.getElementsByTagNameNS(NS_A, "rPr");
+  for (var i = 0; i < runs.length; i++) {
+    var rPr = runs[i];
+    var fills = rPr.getElementsByTagNameNS(NS_A, "solidFill");
+    if (fills.length > 0) rPr.removeChild(fills[0]);
+    var fill = doc.createElementNS(NS_A, "a:solidFill");
+    var clr = doc.createElementNS(NS_A, "a:srgbClr");
+    clr.setAttribute("val", "FFFFFF");
+    fill.appendChild(clr);
+    rPr.insertBefore(fill, rPr.firstChild);
+  }
+`, explanation: "Set text to white")
+```
+
+### Legacy: XML string mode
+
+For single-shape paragraph edits, `read_slide_text` / `edit_slide_text` preserves `<a:bodyPr>` and `<a:lstStyle>` automatically. For full slide XML replacement, use `edit_slide_xml` with `xml` — but prefer code mode to avoid accidentally dropping attributes.
 
 ## Hard Limitations
 
