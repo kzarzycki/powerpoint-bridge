@@ -36,7 +36,7 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 | `read_slide_zip` | Read multiple files from exported slide zip (slide XML, rels, charts) | `slideIndex`, `paths?`, `presentationId?` |
 | `edit_slide_zip` | Update multiple zip files and reimport (auto-registers Content_Types for charts) | `slideIndex`, `files`, `presentationId?` |
 | `duplicate_slide` | Clone a slide within the same presentation | `slideIndex`, `insertAfter?`, `presentationId?` |
-| `verify_slides` | Check for overlapping, out-of-bounds, empty-text, or tiny shapes | `slideIndex`, `checks?`, `presentationId?` |
+| `verify_slides` | Check for overlapping, out-of-bounds, empty-text, tiny shapes, or unused placeholders | `slideIndex`, `checks?`, `presentationId?` |
 | `edit_slide_chart` | Create chart from structured data (generates all OOXML automatically) | `slideIndex`, `chartType`, `title`, `categories`, `series`, `position?`, `options?`, `presentationId?` |
 | `search_text` | Grep for slides — search text across shapes, tables, and speaker notes with regex support | `query`, `slideRange?`, `caseSensitive?`, `regex?`, `context?` (`shape`/`slide`/`none`), `includeNotes?`, `presentationId?` |
 | `format_shapes` | Batch-apply fill and font formatting to shapes in one call | `slideIndex`, `shapes: [{ id, fill?, font? }]`, `presentationId?` |
@@ -45,6 +45,8 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
 
 All positioning values are in **points** (1 pt = 1/72 inch). **Always read `slideWidth` and `slideHeight` from `list_slides` or `inspect_slide` response** — never assume 960 × 540. Common sizes: 960×540 (standard 16:9), 1440×810 (widescreen), 960×720 (4:3).
+
+**Slide numbering**: Users refer to slides by 1-based number ("slide 3"), but all tools use 0-based indices. When a user says "slide 3", use `slideIndex: 2`. When they say "after slide 2", use `insertAfter: 1`.
 
 ### Read Tool Selection — pick the lightest tool that gives you what you need
 
@@ -64,7 +66,7 @@ All positioning values are in **points** (1 pt = 1/72 inch). **Always read `slid
 Key return formats to know:
 
 - **`scan_slide`** returns `{ slideWidth, slideHeight, slides: [{ slideIndex, slideId, shapes: [{ id, name, type, left, top, width, height }] }] }` — `id` is a stable numeric string (use this for read/edit tools); `name` is locale-dependent (never use as selector); `type` is one of "GeometricShape", "TextBox", "Table", "Chart", "Picture", "Group"
-- **`verify_slides`** returns `{ slideIndex, issues: [{ type, description, shapeIds }] }` — `type` is "overlap", "out_of_bounds", or "unused_placeholder"; `shapeIds` are stable IDs
+- **`verify_slides`** returns `{ slideIndex, issues: [{ type, description, shapeIds }] }` — `type` is "overlap", "bounds", "empty_text", "tiny_shapes", or "unused_placeholder"; `shapeIds` are stable IDs
 - **`search_icons`** returns `[{ id, description, isMono, contentTier, searchScore }]` — `isMono: false` = filled/colorful, `isMono: true` = outline/mono; pick highest `searchScore` matching intent
 - **`read_slide_text`** returns raw OOXML `<a:p>` paragraph elements (does NOT include `<a:bodyPr>` or `<a:lstStyle>`)
 - **`read_slide_zip`** returns `{ zipContents: { path: content }, allPaths: [...] }`
@@ -161,9 +163,9 @@ For multi-step work, check in at key milestones. Show interim outputs and confir
 4. **Detect deck type**: Determine blank / custom-styled / template (see above) — this decides whether to apply a theme first.
 4. **See**: `screenshot_slide` — visually inspect specific slides
 5. **Modify**: `execute_officejs` — build entire slides in a single call (all shapes, text, connectors, accents at once) for efficiency and to avoid mid-build visual flashing
-6. **Verify**: full verification loop (see below)
+6. **Verify**: full verification loop — `verify_slides` + `/review-slide` (see below). **Both steps are mandatory. Never skip `/review-slide`.**
 
-Always inspect before modifying. Always verify after modifying.
+Always inspect before modifying. Always verify after modifying. Every modified slide must pass both structural AND visual review before you move on or declare done.
 
 ### Incremental Deck Creation
 
@@ -179,15 +181,15 @@ Do NOT build an entire multi-slide deck in a single call.
 
 ### Verification Loop
 
-After completing work on a slide:
+**MANDATORY** — run this after EVERY slide edit, including fixes. No exceptions.
 
 1. **Auto-size first**: set `autoSizeSetting = "AutoSizeShapeToFitText"` on edited text shapes via `execute_officejs` — otherwise `verify_slides` sees stale dimensions
-2. **Structural check**: `verify_slides` — overlap, bounds, empty text, tiny shapes
+2. **Structural check**: `verify_slides` — overlap, bounds, empty text, tiny shapes, unused placeholders
 3. **Text contrast check**: verify font color (set in the master's `p:txStyles`) contrasts the slide background. Flag and fix any per-shape color override that reduces legibility.
-4. **Visual check**: spawn a subagent for independent visual review (see below)
-5. **Fix issues** and re-verify until clean
+4. **Visual review**: invoke `/review-slide N presentationId` — this is NOT optional. The independent reviewer catches issues you cannot see from data alone (spacing, alignment, visual weight, contrast).
+5. **Fix issues** and re-run from step 1. Repeat until only minor issues remain or only deliberate, acknowledged inconsistencies are left. Do NOT stop after one cycle if the reviewer flags real problems.
 
-Do NOT declare success until you have completed at least one fix-and-verify cycle.
+Do NOT declare success until the verify → fix → re-verify loop converges. Skipping `/review-slide` means you have NOT verified.
 
 If overlaps/overflow: shorten text, reduce font, reposition body content (not title), or split across slides.
 
@@ -202,13 +204,16 @@ If overlaps/overflow: shorten text, reduce font, reposition body content (not ti
 
 **Efficient verification**: For large decks, visually verify only the most complex slides (high shape count, dense content) rather than every slide. Run `verify_slides` on all slides structurally, but pick 4-5 key slides for the visual subagent check.
 
-### Visual Review
+### Visual Review — `/review-slide`
 
-After structural checks pass, invoke `/review-slide N presentationId` (where N is the 0-based slide index) for an independent visual review. Always pass the full presentationId — this skips the list_presentations lookup and avoids ambiguity. The skill runs in a forked context — the reviewer has no conversation knowledge and evaluates purely what it sees.
+**When**: After every slide edit — step 4 of the verification loop. This is the final gate before declaring a slide done.
 
-Rules: never mention "the reviewer" to user. Speak in first person: "I noticed the title overlaps" not "The reviewer found an overlap." Only use for completed work, not initial inspection.
+**How**: Invoke `/review-slide N presentationId` (N = 0-based slide index). Always pass the full presentationId — skips lookup and avoids ambiguity. The skill runs in a forked context with no conversation knowledge — it evaluates purely what it sees, eliminating confirmation bias.
 
-For large decks: run `verify_slides` structurally on all slides, but `/review-slide` only on the 4-5 most complex slides.
+**Why mandatory**: `verify_slides` catches structural issues (overlaps, bounds) but cannot detect spacing problems, visual imbalance, contrast issues, misaligned elements, or text overflow that Office.js doesn't report. Only a visual screenshot review catches these.
+
+**Rules**:
+- For large decks: run `verify_slides` structurally on all slides, but `/review-slide` only on the 4-5 most complex slides.
 
 For `execute_officejs` code patterns, see [code-patterns.md](references/code-patterns.md).
 
@@ -342,6 +347,7 @@ For charts, use `edit_slide_chart` (declarative) or `edit_slide_zip` (raw OOXML)
 - Prefer more slides with less content over fewer dense slides
 - Use full slide area — stretch content to fill, don't leave large margins
 - Never use emoji or Unicode symbols as icons — use geometric shapes as icon substitutes
+- **Use icons to enhance content slides.** When a slide has key points, categories, or features, add relevant icons alongside the text. Always attempt `search_icons` before falling back to geometric shapes.
 
 ## Slide Layout Recipes
 
@@ -393,7 +399,7 @@ Standard cards with a small colored RoundedRectangle "badge" overlaid (e.g., sho
 - `slides.add()` always appends — use `slide.moveTo(index)` to reposition
 - Always use last master: `masters.items[masters.items.length - 1]` — earlier may be stale
 - No `#` prefix for background colors: `{ color: "1A1A1E" }` not `"#1A1A1E"`
-- Don't delete placeholders after writing text — `hasText` is stale, you'll delete what you just wrote
+- Don't delete placeholders after writing text — `hasText` is stale, you'll delete what you just wrote. But DO delete genuinely unused placeholders (ones you never wrote to) — never leave empty placeholders on a finished slide.
 - Shape IDs are stable and locale-independent. Shape names change with Office UI language. Always use ID.
 
 **Charts:**

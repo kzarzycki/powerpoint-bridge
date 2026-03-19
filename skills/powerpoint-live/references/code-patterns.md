@@ -468,6 +468,14 @@ context.presentation.insertSlidesFromBase64(base64String, {
   targetSlideId: "267#"
 });
 await context.sync();
+
+// Selective import: insert only specific slides from a multi-slide .pptx
+// Use sourceSlideIds to pick which slides to import — do NOT insert all then delete extras
+context.presentation.insertSlidesFromBase64(base64String, {
+  formatting: "UseDestinationTheme",
+  sourceSlideIds: ["256", "258"]  // slide IDs from the source .pptx
+});
+await context.sync();
 ```
 
 ## OOXML Text Editing
