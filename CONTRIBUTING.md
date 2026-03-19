@@ -21,7 +21,7 @@ npm run sideload    # Sideload the add-in manifest
 server/
   index.ts      # Entrypoint: HTTP(S) + WS(S) + MCP servers, wiring
   bridge.ts     # ConnectionPool class — manages add-in WebSocket connections
-  tools.ts      # MCP tool definitions (list_presentations, get_presentation, etc.)
+  tools.ts      # MCP tool definitions (list_presentations, list_slides, inspect_slide, etc.)
   bridge.test.ts
   tools.test.ts
 addin/

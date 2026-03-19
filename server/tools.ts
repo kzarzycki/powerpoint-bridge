@@ -327,7 +327,7 @@ export function registerTools(
     'screenshot_slide',
     'Slide screenshot (~1000 tokens): captures one slide as PNG image. Use to visually verify layout after changes. Do NOT loop over all slides — use preview_deck instead.',
     {
-      slideIndex: z.number().int().min(0).describe('Zero-based slide index from get_presentation results'),
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index from list_slides results'),
       width: z
         .number()
         .int()
@@ -828,8 +828,8 @@ export function registerTools(
     'read_slide_text',
     "Read raw OOXML <a:p> paragraphs from a shape's text body. Returns the paragraph XML as a string — preserves all formatting (bold, colors, bullets, etc.) that textRange.text strips. Use with the /pptx skill's OOXML knowledge to understand and modify the XML.",
     {
-      slideIndex: z.number().int().min(0).describe('Zero-based slide index from get_presentation results'),
-      shapeId: z.string().describe('Shape ID from get_slide results (e.g. "5")'),
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index from list_slides results'),
+      shapeId: z.string().describe('Shape ID from inspect_slide results (e.g. "5")'),
       presentationId: z
         .string()
         .optional()
@@ -860,7 +860,7 @@ export function registerTools(
     "Replace paragraph content of a shape with raw OOXML <a:p> XML. Preserves <a:bodyPr> and <a:lstStyle>. Use read_slide_text first to get the current XML, modify it (using /pptx skill knowledge), then write it back. The slide is exported, modified server-side, and reimported — data never enters Claude's context.",
     {
       slideIndex: z.number().int().min(0).describe('Zero-based slide index'),
-      shapeId: z.string().describe('Shape ID from get_slide results'),
+      shapeId: z.string().describe('Shape ID from inspect_slide results'),
       xml: z.string().describe('The <a:p> paragraph XML to replace the current text body content with'),
       presentationId: z
         .string()
@@ -895,7 +895,7 @@ export function registerTools(
     'read_slide_xml',
     "Read the full raw OOXML of a slide, or filter to a specific shape. Returns the slide's ppt/slides/slide1.xml content. Use with the /pptx skill's OOXML knowledge to understand the XML structure.",
     {
-      slideIndex: z.number().int().min(0).describe('Zero-based slide index from get_presentation results'),
+      slideIndex: z.number().int().min(0).describe('Zero-based slide index from list_slides results'),
       shapeId: z
         .string()
         .optional()
@@ -1084,7 +1084,7 @@ export function registerTools(
   // --- Tool: verify_slides ---
   server.tool(
     'verify_slides',
-    'Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, and tiny shapes. Returns a list of issues found. Uses the same shape data as get_slide — no OOXML needed.',
+    'Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, and tiny shapes. Returns a list of issues found. Uses the same shape data as inspect_slide — no OOXML needed.',
     {
       slideIndex: z.number().int().min(0).describe('Zero-based slide index'),
       checks: z
@@ -1101,7 +1101,7 @@ export function registerTools(
         const target = pool.resolveTarget(presentationId)
         const enabledChecks = checks ?? ['overlap', 'bounds', 'empty_text', 'tiny_shapes']
 
-        // Reuse get_slide's shape-loading logic
+        // Reuse inspect_slide's shape-loading logic
         const code = `
           var slides = context.presentation.slides;
           slides.load("items");
@@ -1699,7 +1699,7 @@ export function registerTools(
       shapes: z
         .array(
           z.object({
-            id: z.string().describe('Shape ID from get_slide or list_slide_shapes'),
+            id: z.string().describe('Shape ID from inspect_slide or scan_slide'),
             fill: z.string().optional().describe('Fill color as hex without # (e.g., "1A1A1E")'),
             font: z
               .object({

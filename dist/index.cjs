@@ -49775,7 +49775,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
     "screenshot_slide",
     "Slide screenshot (~1000 tokens): captures one slide as PNG image. Use to visually verify layout after changes. Do NOT loop over all slides \u2014 use preview_deck instead.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from list_slides results"),
       width: external_exports3.number().int().min(1).max(4096).optional().describe(
         "Image width in pixels. Default: 720. Height auto-calculated to preserve aspect ratio unless also specified."
       ),
@@ -50153,8 +50153,8 @@ ${textParts.join("\n")}` : "\n(no text content)";
     "read_slide_text",
     "Read raw OOXML <a:p> paragraphs from a shape's text body. Returns the paragraph XML as a string \u2014 preserves all formatting (bold, colors, bullets, etc.) that textRange.text strips. Use with the /pptx skill's OOXML knowledge to understand and modify the XML.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
-      shapeId: external_exports3.string().describe('Shape ID from get_slide results (e.g. "5")'),
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from list_slides results"),
+      shapeId: external_exports3.string().describe('Shape ID from inspect_slide results (e.g. "5")'),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
     async ({ slideIndex, shapeId, presentationId }) => {
@@ -50180,7 +50180,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
     "Replace paragraph content of a shape with raw OOXML <a:p> XML. Preserves <a:bodyPr> and <a:lstStyle>. Use read_slide_text first to get the current XML, modify it (using /pptx skill knowledge), then write it back. The slide is exported, modified server-side, and reimported \u2014 data never enters Claude's context.",
     {
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
-      shapeId: external_exports3.string().describe("Shape ID from get_slide results"),
+      shapeId: external_exports3.string().describe("Shape ID from inspect_slide results"),
       xml: external_exports3.string().describe("The <a:p> paragraph XML to replace the current text body content with"),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
@@ -50210,7 +50210,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
     "read_slide_xml",
     "Read the full raw OOXML of a slide, or filter to a specific shape. Returns the slide's ppt/slides/slide1.xml content. Use with the /pptx skill's OOXML knowledge to understand the XML structure.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from list_slides results"),
       shapeId: external_exports3.string().optional().describe("Optional shape ID to filter to. If provided, returns only that shape's <p:sp> element."),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
@@ -50357,7 +50357,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
   );
   server.tool(
     "verify_slides",
-    "Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, and tiny shapes. Returns a list of issues found. Uses the same shape data as get_slide \u2014 no OOXML needed.",
+    "Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, and tiny shapes. Returns a list of issues found. Uses the same shape data as inspect_slide \u2014 no OOXML needed.",
     {
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
       checks: external_exports3.array(external_exports3.enum(["overlap", "bounds", "empty_text", "tiny_shapes"])).optional().describe("Checks to run. Default: all four checks."),
@@ -50847,7 +50847,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
       shapes: external_exports3.array(
         external_exports3.object({
-          id: external_exports3.string().describe("Shape ID from get_slide or list_slide_shapes"),
+          id: external_exports3.string().describe("Shape ID from inspect_slide or scan_slide"),
           fill: external_exports3.string().optional().describe('Fill color as hex without # (e.g., "1A1A1E")'),
           font: external_exports3.object({
             bold: external_exports3.boolean().optional(),
