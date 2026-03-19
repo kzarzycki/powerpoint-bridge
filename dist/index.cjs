@@ -49598,7 +49598,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
   );
   server.tool(
     "get_presentation",
-    "Returns the structure of the currently open PowerPoint presentation including slide dimensions (slideWidth, slideHeight in points) and all slides with their IDs and shape summaries (count, names, types). Use this first to understand what's in the presentation before making changes.",
+    "Deck index (like list_slides): returns slide dimensions (slideWidth, slideHeight in points) and all slides with IDs and shape summaries (names, types). Scales with total shapes across all slides (~15 tokens/shape) \u2014 on a 20-slide deck this can be 3000+ tokens. Use to learn deck structure and slide indices. Do NOT use just to get slide dimensions \u2014 call get_slide on one slide instead.",
     {
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
@@ -49640,7 +49640,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
   );
   server.tool(
     "get_slide",
-    "Returns slide dimensions (slideWidth, slideHeight in points) and detailed information about all shapes on a specific slide, including text content, positions (left, top in points), sizes (width, height in points), and fill colors. Use slideIndex from get_presentation results (zero-based).",
+    "Detailed slide inspector: returns slide dimensions (slideWidth, slideHeight), and every shape with text content, positions, sizes, and fill colors (~80 tokens/shape). Use when you need to read or edit a specific slide. For just positions without text/fills, use list_slide_shapes instead.",
     {
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
@@ -49703,7 +49703,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
   );
   server.tool(
     "list_slide_shapes",
-    "List all shapes on a slide with their IDs, types, and positions, plus slide dimensions (slideWidth, slideHeight in points). Lighter than get_slide \u2014 omits text and fill data.",
+    "Lightweight shape scanner: lists shape IDs, types, and positions on one slide, plus slide dimensions (~40 tokens/shape). Use when you only need shape layout/positions. For text content and fills, use get_slide instead.",
     {
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
@@ -49751,7 +49751,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
   );
   server.tool(
     "get_slide_image",
-    "Captures a visual screenshot of a specific slide as a PNG image. Use this to SEE what a slide looks like \u2014 useful for verifying layout after changes or understanding content visually. Requires PowerPoint 16.96+ (PowerPointApi 1.8).",
+    "Slide screenshot: captures one slide as PNG image (~1000 tokens). Use to visually verify layout after changes. Do NOT use in a loop over all slides \u2014 use get_deck_overview instead.",
     {
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
       width: external_exports3.number().int().min(1).max(4096).optional().describe(
@@ -49940,7 +49940,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
   );
   server.tool(
     "get_deck_overview",
-    "Returns a visual overview of all (or selected) slides in one call \u2014 thumbnails interleaved with text metadata. Much more efficient than calling get_slide + get_slide_image per slide. Use this to review or audit an entire presentation quickly.",
+    "Deck preview: batch overview of all/selected slides with optional thumbnails + text. With images: ~900 tokens/slide; text-only (includeImages=false): ~35 tokens/slide. Use for visual review or content audit. Do NOT use to inspect one slide \u2014 use get_slide or get_slide_image instead.",
     {
       slideRange: external_exports3.string().optional().describe('Slide indices to include, e.g. "0-5", "2,4,7", "0-2,5,8-10". Omit for all slides.'),
       imageWidth: external_exports3.number().int().min(120).max(1920).optional().describe("Thumbnail width in pixels. Default: 480. Height auto-calculated to preserve aspect ratio."),

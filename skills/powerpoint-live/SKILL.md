@@ -21,10 +21,11 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 | Tool | Purpose | Key Parameters |
 |------|---------|---------------|
 | `list_presentations` | Discover connected presentations | — |
-| `get_presentation` | Get slide structure (indices, shape names/types) | `presentationId?` |
-| `get_slide` | Get detailed shapes (positions, text, colors) | `slideIndex`, `presentationId?` |
-| `get_slide_image` | Capture slide screenshot as PNG | `slideIndex`, `width?` (default 720), `presentationId?` |
-| `get_deck_overview` | Visual overview of all/selected slides in one call (thumbnails + text) | `slideRange?`, `imageWidth?` (default 480), `includeImages?`, `presentationId?` |
+| `get_presentation` | Deck index — all slides with shape names/types | `presentationId?` |
+| `get_slide` | Detailed slide inspector — shapes with text, positions, fills | `slideIndex`, `presentationId?` |
+| `list_slide_shapes` | Lightweight shape scanner — IDs + positions only | `slideIndex`, `presentationId?` |
+| `get_slide_image` | Slide screenshot as PNG | `slideIndex`, `width?` (default 720), `presentationId?` |
+| `get_deck_overview` | Deck preview — batch overview with optional thumbnails | `slideRange?`, `imageWidth?` (default 480), `includeImages?`, `presentationId?` |
 | `copy_slides` | Copy slides between two open presentations (data stays server-side) | `sourceSlideIndex`, `sourcePresentationId`, `destinationPresentationId`, `formatting?`, `targetSlideId?` |
 | `insert_image` | Insert image from file path, URL, or base64 data (data stays server-side for file/url) | `source`, `sourceType` (`file`/`url`/`base64`), `slideIndex?`, `left?`, `top?`, `width?`, `height?`, `presentationId?` |
 | `get_local_copy` | Get a local .pptx file path (passthrough for local files, exports cloud files to temp) | `presentationId?` |
@@ -44,6 +45,19 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
 
 All positioning values are in **points** (1 pt = 1/72 inch). **Always read `slideWidth` and `slideHeight` from `get_presentation` or `get_slide` response** — never assume 960 × 540. Common sizes: 960×540 (standard 16:9), 1440×810 (widescreen), 960×720 (4:3).
+
+### Read Tool Selection — pick the lightest tool that gives you what you need
+
+| Tool | Scope | ~Cost | When to use | When NOT to use |
+|------|-------|-------|-------------|-----------------|
+| `list_slide_shapes` | 1 slide | ~40 tok/shape | Need shape positions/IDs for editing | Need text content or fills |
+| `get_slide` | 1 slide | ~80 tok/shape | Need full details (text, positions, fills) to read or edit | Just need positions — use `list_slide_shapes` |
+| `get_slide_image` | 1 slide | ~1000 tok | Visual verification after changes | Looping over all slides — use `get_deck_overview` |
+| `get_presentation` | All slides | ~15 tok/shape | Need deck structure and slide indices | Just need dimensions — call `get_slide` on one slide |
+| `get_deck_overview` text-only | All slides | ~35 tok/slide | Content audit, find which slide has what | Need shape positions or fills |
+| `get_deck_overview` + images | All slides | ~900 tok/slide | Visual audit of entire deck | Just need one slide — use `get_slide_image` |
+
+**Example**: a 20-slide deck with ~200 total shapes: `get_presentation` ≈ 3000 tokens, `get_deck_overview` text-only ≈ 700 tokens, `get_deck_overview` with images ≈ 18000 tokens. Always prefer the lightest option.
 
 ### Tool Return Values
 
