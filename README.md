@@ -163,10 +163,11 @@ brew install node
 | Tool | Description |
 |------|-------------|
 | `list_presentations` | Lists all connected presentations with their IDs and status |
-| `get_presentation` | Returns slide structure (IDs, shape counts, shape names/types) |
-| `get_slide` | Returns detailed shape info for a slide (text, positions, sizes, fills) |
-| `get_slide_image` | Captures a visual screenshot of a slide as PNG (requires PowerPoint 16.96+) |
-| `get_deck_overview` | Returns thumbnails + text for all/selected slides in one call (efficient full-deck review) |
+| `list_slides` | Lightweight deck index: slide dimensions, IDs, and shape counts |
+| `inspect_slide` | Returns detailed shape info for a slide (text, positions, sizes, fills) |
+| `scan_slide` | Lightweight shape scanner: IDs, types, and positions |
+| `screenshot_slide` | Captures a visual screenshot of a slide as PNG (requires PowerPoint 16.96+) |
+| `preview_deck` | Returns thumbnails + text for all/selected slides in one call (efficient full-deck review) |
 | `copy_slides` | Copies slides between two open presentations (data stays server-side, never in Claude context) |
 | `insert_image` | Inserts an image from a file path, URL, or base64 data onto a slide |
 | `get_local_copy` | Returns a local file path for the presentation (passthrough for local, exports cloud files to temp .pptx) |

@@ -21,10 +21,11 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 | Tool | Purpose | Key Parameters |
 |------|---------|---------------|
 | `list_presentations` | Discover connected presentations | — |
-| `get_presentation` | Get slide structure (indices, shape names/types) | `presentationId?` |
-| `get_slide` | Get detailed shapes (positions, text, colors) | `slideIndex`, `presentationId?` |
-| `get_slide_image` | Capture slide screenshot as PNG | `slideIndex`, `width?` (default 720), `presentationId?` |
-| `get_deck_overview` | Visual overview of all/selected slides in one call (thumbnails + text) | `slideRange?`, `imageWidth?` (default 480), `includeImages?`, `presentationId?` |
+| `list_slides` | Lightweight deck index (~5 tok/slide): slide count, IDs, shape counts, dimensions | `presentationId?` |
+| `inspect_slide` | Detailed shape inspector (~80 tok/shape): text, positions, fills | `slideRange`, `presentationId?` |
+| `scan_slide` | Lightweight shape scanner (~40 tok/shape): IDs, types, positions | `slideRange`, `presentationId?` |
+| `screenshot_slide` | Capture one slide as PNG (~1000 tok) | `slideIndex`, `width?` (default 720), `presentationId?` |
+| `preview_deck` | Batch overview of all/selected slides with thumbnails + text | `slideRange?`, `imageWidth?` (default 480), `includeImages?`, `presentationId?` |
 | `copy_slides` | Copy slides between two open presentations (data stays server-side) | `sourceSlideIndex`, `sourcePresentationId`, `destinationPresentationId`, `formatting?`, `targetSlideId?` |
 | `insert_image` | Insert image from file path, URL, or base64 data (data stays server-side for file/url) | `source`, `sourceType` (`file`/`url`/`base64`), `slideIndex?`, `left?`, `top?`, `width?`, `height?`, `presentationId?` |
 | `get_local_copy` | Get a local .pptx file path (passthrough for local files, exports cloud files to temp) | `presentationId?` |
@@ -43,13 +44,26 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
 
-All positioning values are in **points** (1 pt = 1/72 inch). **Always read `slideWidth` and `slideHeight` from `get_presentation` or `get_slide` response** — never assume 960 × 540. Common sizes: 960×540 (standard 16:9), 1440×810 (widescreen), 960×720 (4:3).
+All positioning values are in **points** (1 pt = 1/72 inch). **Always read `slideWidth` and `slideHeight` from `list_slides` or `inspect_slide` response** — never assume 960 × 540. Common sizes: 960×540 (standard 16:9), 1440×810 (widescreen), 960×720 (4:3).
+
+### Read Tool Selection — pick the lightest tool that gives you what you need
+
+| Tool | Scope | ~Cost | When to use | When NOT to use |
+|------|-------|-------|-------------|-----------------|
+| `list_slides` | All slides | ~5 tok/slide | First call — learn deck structure, slide count, dimensions | Need shape details |
+| `scan_slide` | 1+ slides | ~40 tok/shape | Need shape layout/positions for editing | Need text content or fills |
+| `inspect_slide` | 1+ slides | ~80 tok/shape | Need full details (text, positions, fills) | Just need positions — use scan_slide |
+| `screenshot_slide` | 1 slide | ~1000 tok | Visual verification after changes | Looping over all slides — use preview_deck |
+| `preview_deck` text-only | All slides | ~35 tok/slide | Content audit, find which slide has what | Need shape positions or fills |
+| `preview_deck` + images | All slides | ~900 tok/slide | Visual audit of entire deck | Just need one slide — use screenshot_slide |
+
+**Example**: a 20-slide deck: `list_slides` ≈ 100 tokens, `preview_deck` text-only ≈ 700 tokens, `preview_deck` with images ≈ 18000 tokens. Always prefer the lightest option.
 
 ### Tool Return Values
 
 Key return formats to know:
 
-- **`list_slide_shapes`** returns `[{ id, name, type, left, top, width, height }]` — `id` is a stable numeric string (use this for read/edit tools); `name` is locale-dependent (never use as selector); `type` is one of "GeometricShape", "TextBox", "Table", "Chart", "Picture", "Group"
+- **`scan_slide`** returns `{ slideWidth, slideHeight, slides: [{ slideIndex, slideId, shapes: [{ id, name, type, left, top, width, height }] }] }` — `id` is a stable numeric string (use this for read/edit tools); `name` is locale-dependent (never use as selector); `type` is one of "GeometricShape", "TextBox", "Table", "Chart", "Picture", "Group"
 - **`verify_slides`** returns `{ slideIndex, issues: [{ type, description, shapeIds }] }` — `type` is "overlap", "out_of_bounds", or "unused_placeholder"; `shapeIds` are stable IDs
 - **`search_icons`** returns `[{ id, description, isMono, contentTier, searchScore }]` — `isMono: false` = filled/colorful, `isMono: true` = outline/mono; pick highest `searchScore` matching intent
 - **`read_slide_text`** returns raw OOXML `<a:p>` paragraph elements (does NOT include `<a:bodyPr>` or `<a:lstStyle>`)
@@ -83,7 +97,7 @@ Key return formats to know:
 Before editing, determine the deck type. This determines the entire approach.
 
 ### Case 1: Blank Deck
-**Detection:** `get_presentation` shows only default slides, `get_slide` shows no custom content or colors.
+**Detection:** `list_slides` shows only default slides, `inspect_slide` shows no custom content or colors.
 
 Use `edit_slide_master` FIRST to set up a complete theme before adding any slides. Do ALL of the following in a single `edit_slide_master` call:
 1. **Theme colors** — set the full `a:clrScheme`: dk1, dk2, lt1, lt2, and all six accents. Pick a cohesive palette suited to the topic and audience.
@@ -95,7 +109,7 @@ Use `edit_slide_master` FIRST to set up a complete theme before adding any slide
 **Palette diversity rule:** Do NOT default to dark backgrounds. Light, warm, pastel, earthy, vibrant, and muted palettes are all valid choices. Match the tone of the content.
 
 ### Case 2: Custom-Styled Deck (Default Master)
-**Detection:** `get_presentation` shows default theme but `get_slide` reveals custom colors, fonts, and shapes on existing slides.
+**Detection:** `list_slides` shows default theme but `inspect_slide` reveals custom colors, fonts, and shapes on existing slides.
 
 Do NOT create or modify the slide master. The existing slides ARE the design system.
 - Before adding new slides, READ existing slides to extract visual style: background colors, font names, sizes, text colors, accent colors, shape styles.
@@ -103,7 +117,7 @@ Do NOT create or modify the slide master. The existing slides ARE the design sys
 - Apply colors and fonts explicitly per-slide to match existing slides, since the master has no custom styles to inherit from.
 
 ### Case 3: Template or Existing Presentation
-**Detection:** `get_presentation` shows a non-default theme.
+**Detection:** `list_slides` shows a non-default theme.
 
 Default to PRESERVING the existing theme. New slides and additions should blend with existing colors, fonts, and layouts.
 
@@ -142,10 +156,10 @@ For multi-step work, check in at key milestones. Show interim outputs and confir
 ## Workflow
 
 1. **Discover**: `list_presentations` — find connected presentations
-2. **Audit**: Check existing state — slide count, available layouts, which slides already have content. Use `get_deck_overview` for a visual overview, or `get_presentation` then `get_slide` per slide. This is essential for resuming partial builds or modifying existing decks.
+2. **Audit**: Check existing state — slide count, available layouts, which slides already have content. Use `preview_deck` for a visual overview, or `list_slides` then `inspect_slide` per slide. This is essential for resuming partial builds or modifying existing decks.
 3. **Find**: `search_text` — grep for slides. Searches shapes, tables, and speaker notes. Use `context: "none"` for just slide indices, `"shape"` (default) for matching shapes, or `"slide"` for full slide context with all shapes. Supports regex.
 4. **Detect deck type**: Determine blank / custom-styled / template (see above) — this decides whether to apply a theme first.
-4. **See**: `get_slide_image` — visually inspect specific slides
+4. **See**: `screenshot_slide` — visually inspect specific slides
 5. **Modify**: `execute_officejs` — build entire slides in a single call (all shapes, text, connectors, accents at once) for efficiency and to avoid mid-build visual flashing
 6. **Verify**: full verification loop (see below)
 
@@ -193,7 +207,7 @@ If overlaps/overflow: shorten text, reduce font, reposition body content (not ti
 Use the Agent tool to spawn a subagent that reviews the slide screenshot. The subagent has no conversation context, providing an independent review.
 
 Subagent prompt (replace N with the slide index):
-> Call get_slide_image(slideIndex: N) to capture the slide, then review it for: text overflow or truncation, overlapping shapes or text, unreadable text (too small, poor contrast), misalignment or inconsistent spacing, empty or unused space, inconsistent styling (mixed fonts, colors, sizes). Return a JSON array of issues found, each with: severity (error/warning/info), category, description, and suggestion. If no issues found, return [].
+> Call screenshot_slide(slideIndex: N) to capture the slide, then review it for: text overflow or truncation, overlapping shapes or text, unreadable text (too small, poor contrast), misalignment or inconsistent spacing, empty or unused space, inconsistent styling (mixed fonts, colors, sizes). Return a JSON array of issues found, each with: severity (error/warning/info), category, description, and suggestion. If no issues found, return [].
 
 Rules: never mention "the reviewer" to user. Speak in first person: "I noticed the title overlaps" not "The reviewer found an overlap." Only use for completed work, not initial inspection.
 
@@ -220,12 +234,12 @@ Choose the right tool for each edit. Prefer higher tools in this table — fall 
 When fixing style issues across multiple slides (e.g., after an audit finds inconsistent colors, fonts, or formatting):
 
 1. **Process by slide, not by type** — apply ALL fixes for slide N in one call, then move to N+1. Do NOT sweep all slides for colors, then all slides for fonts, then all slides for corners.
-2. **Reuse existing audit data** — if an audit file or previous tool output already describes the issues per slide, use it directly. Do NOT re-read slides with `get_slide` when you already have the information.
+2. **Reuse existing audit data** — if an audit file or previous tool output already describes the issues per slide, use it directly. Do NOT re-read slides with `inspect_slide` when you already have the information.
 3. **Match tool to property**:
    - Office.js-expressible properties (fill, font bold/size/color/name) → `format_shapes` (one call per slide, all shapes)
    - OOXML-only properties (corners, borders) → `edit_slide_xml` with `code` (one call per slide, all shapes via DOM)
    - If a slide needs both, use two calls: `format_shapes` first, then `edit_slide_xml` code
-4. **Verify after each slide**, not after each property type — `get_slide_image` per slide to confirm all fixes applied correctly before moving on.
+4. **Verify after each slide**, not after each property type — `screenshot_slide` per slide to confirm all fixes applied correctly before moving on.
 
 ## User Preferences Persistence
 
@@ -258,9 +272,9 @@ For fine-grained formatting control beyond what Office.js properties expose, use
 
 One call — the code reads and modifies the pre-parsed DOM server-side. Only touched attributes change; everything else is preserved.
 
-1. **Discover**: `get_slide(slideIndex)` → find shape IDs
+1. **Discover**: `inspect_slide(slideRange: "N")` → find shape IDs
 2. **Edit + Write**: `edit_slide_xml` with `code` — DOM manipulation in one call
-3. **Verify**: `get_slide_image` — confirm visual result
+3. **Verify**: `screenshot_slide` — confirm visual result
 
 **Sandbox context** (available in your code):
 
@@ -405,4 +419,4 @@ For features Office.js cannot access (comments, chart data, embedded objects, ma
 - **"Multiple presentations connected"** — specify `presentationId`
 - **"Add-in disconnected"** — auto-reconnects; wait and retry
 - **"Command timed out"** — simplify code or check PowerPoint responsiveness
-- **Screenshot via execute_officejs overflows tokens** — always use `get_slide_image` instead (returns MCP image block, not text)
+- **Screenshot via execute_officejs overflows tokens** — always use `screenshot_slide` instead (returns MCP image block, not text)

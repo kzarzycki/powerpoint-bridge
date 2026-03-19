@@ -35,20 +35,24 @@
       "description": "List all connected PowerPoint presentations"
     },
     {
-      "name": "get_presentation",
-      "description": "Get the structure of a presentation (slides and shapes)"
+      "name": "list_slides",
+      "description": "Lightweight deck index: slide dimensions, IDs, and shape counts"
     },
     {
-      "name": "get_slide",
-      "description": "Get detailed information about shapes on a specific slide"
+      "name": "inspect_slide",
+      "description": "Detailed slide inspector: shapes with text, positions, sizes, and fills"
     },
     {
-      "name": "get_slide_image",
+      "name": "scan_slide",
+      "description": "Lightweight shape scanner: IDs, types, and positions"
+    },
+    {
+      "name": "screenshot_slide",
       "description": "Capture a slide as a PNG screenshot"
     },
     {
-      "name": "get_deck_overview",
-      "description": "Visual overview of all slides with thumbnails"
+      "name": "preview_deck",
+      "description": "Batch overview of all/selected slides with optional thumbnails and text"
     },
     {
       "name": "get_local_copy",
@@ -61,6 +65,50 @@
     {
       "name": "insert_image",
       "description": "Insert an image onto a slide"
+    },
+    {
+      "name": "duplicate_slide",
+      "description": "Duplicate a slide within the same presentation"
+    },
+    {
+      "name": "verify_slides",
+      "description": "Run programmatic checks on a slide (overlap, bounds, empty text, tiny shapes)"
+    },
+    {
+      "name": "read_slide_text",
+      "description": "Read raw OOXML paragraphs from a shape's text body"
+    },
+    {
+      "name": "edit_slide_text",
+      "description": "Replace paragraph content of a shape with raw OOXML"
+    },
+    {
+      "name": "read_slide_xml",
+      "description": "Read the full raw OOXML of a slide or a specific shape"
+    },
+    {
+      "name": "edit_slide_xml",
+      "description": "Edit slide XML and reimport (xml or code mode)"
+    },
+    {
+      "name": "read_slide_zip",
+      "description": "Read multiple files from the exported slide zip"
+    },
+    {
+      "name": "edit_slide_zip",
+      "description": "Update multiple files in the slide zip and reimport"
+    },
+    {
+      "name": "edit_slide_chart",
+      "description": "Create a chart on a slide from structured data"
+    },
+    {
+      "name": "search_text",
+      "description": "Search for text across all slides in the presentation"
+    },
+    {
+      "name": "format_shapes",
+      "description": "Apply formatting to multiple shapes on a slide in one call"
     },
     {
       "name": "execute_officejs",

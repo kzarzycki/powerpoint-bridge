@@ -49597,8 +49597,8 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
     }
   );
   server.tool(
-    "get_presentation",
-    "Returns the structure of the currently open PowerPoint presentation including slide dimensions (slideWidth, slideHeight in points) and all slides with their IDs and shape summaries (count, names, types). Use this first to understand what's in the presentation before making changes.",
+    "list_slides",
+    "Lightweight deck index (~5 tokens/slide): returns slide dimensions (slideWidth, slideHeight) and all slides with index, ID, and shape count. Use as the first call to understand deck structure. For shape details, follow up with scan_slide or inspect_slide on specific slides.",
     {
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
@@ -49611,19 +49611,15 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
           slides.load("items");
           ps.load("slideWidth,slideHeight");
           await context.sync();
-          for (var i = 0; i < slides.items.length; i++) {
-            slides.items[i].shapes.load("items");
-          }
-          await context.sync();
           var output = [];
           for (var i = 0; i < slides.items.length; i++) {
             var slide = slides.items[i];
-            var shapes = [];
-            for (var j = 0; j < slide.shapes.items.length; j++) {
-              var s = slide.shapes.items[j];
-              shapes.push({ name: s.name, type: s.type, id: s.id });
-            }
-            output.push({ index: i, id: slide.id, shapeCount: shapes.length, shapes: shapes });
+            slide.shapes.load("items");
+          }
+          await context.sync();
+          for (var i = 0; i < slides.items.length; i++) {
+            var slide = slides.items[i];
+            output.push({ index: i, id: slide.id, shapeCount: slide.shapes.items.length });
           }
           return { slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `;
@@ -49639,14 +49635,17 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
     }
   );
   server.tool(
-    "get_slide",
-    "Returns slide dimensions (slideWidth, slideHeight in points) and detailed information about all shapes on a specific slide, including text content, positions (left, top in points), sizes (width, height in points), and fill colors. Use slideIndex from get_presentation results (zero-based).",
+    "inspect_slide",
+    "Detailed slide inspector (~80 tokens/shape): returns every shape with text content, positions, sizes, and fill colors, plus slide dimensions. Supports slideRange for multiple slides. For just positions without text/fills, use scan_slide instead.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
+      slideRange: external_exports3.string().describe('Slide indices to inspect, e.g. "0", "0-5", "2,4,7". Single index or range.'),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
-    async ({ slideIndex, presentationId }) => {
+    async ({ slideRange, presentationId }) => {
       try {
+        const indices = parseSlideRange(slideRange) ?? [];
+        if (indices.length === 0) throw new Error("slideRange is required");
+        const indicesJs = JSON.stringify(indices);
         const code = `
           var p = context.presentation;
           var slides = p.slides;
@@ -49654,41 +49653,51 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
           slides.load("items");
           ps.load("slideWidth,slideHeight");
           await context.sync();
-          if (${slideIndex} >= slides.items.length) {
-            throw new Error("Slide index " + ${slideIndex} + " out of range (presentation has " + slides.items.length + " slides)");
+          var requestedIndices = ${indicesJs};
+          for (var i = 0; i < requestedIndices.length; i++) {
+            if (requestedIndices[i] >= slides.items.length) {
+              throw new Error("Slide index " + requestedIndices[i] + " out of range (presentation has " + slides.items.length + " slides)");
+            }
           }
-          var slide = slides.items[${slideIndex}];
-          slide.shapes.load("items");
+          for (var i = 0; i < requestedIndices.length; i++) {
+            slides.items[requestedIndices[i]].shapes.load("items");
+          }
           await context.sync();
-          var shapes = [];
-          for (var i = 0; i < slide.shapes.items.length; i++) {
-            var s = slide.shapes.items[i];
-            var info = {
-              name: s.name,
-              type: s.type,
-              id: s.id,
-              left: s.left,
-              top: s.top,
-              width: s.width,
-              height: s.height
-            };
-            try {
-              s.textFrame.load("textRange");
-              await context.sync();
-              info.text = s.textFrame.textRange.text;
-            } catch (e) {
-              // Shape has no text frame (e.g., images, connectors)
+          var output = [];
+          for (var i = 0; i < requestedIndices.length; i++) {
+            var idx = requestedIndices[i];
+            var slide = slides.items[idx];
+            var shapes = [];
+            for (var j = 0; j < slide.shapes.items.length; j++) {
+              var s = slide.shapes.items[j];
+              var info = {
+                name: s.name,
+                type: s.type,
+                id: s.id,
+                left: s.left,
+                top: s.top,
+                width: s.width,
+                height: s.height
+              };
+              try {
+                s.textFrame.load("textRange");
+                await context.sync();
+                info.text = s.textFrame.textRange.text;
+              } catch (e) {
+                // Shape has no text frame (e.g., images, connectors)
+              }
+              try {
+                s.fill.load("foregroundColor,type");
+                await context.sync();
+                info.fill = { type: s.fill.type, color: s.fill.foregroundColor };
+              } catch (e) {
+                // Shape has no fill or fill not accessible
+              }
+              shapes.push(info);
             }
-            try {
-              s.fill.load("foregroundColor,type");
-              await context.sync();
-              info.fill = { type: s.fill.type, color: s.fill.foregroundColor };
-            } catch (e) {
-              // Shape has no fill or fill not accessible
-            }
-            shapes.push(info);
+            output.push({ slideIndex: idx, slideId: slide.id, shapes: shapes });
           }
-          return { slideIndex: ${slideIndex}, slideId: slide.id, slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, shapes: shapes };
+          return { slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `;
         const target = pool2.resolveTarget(presentationId);
         const result = await pool2.sendCommand("executeCode", { code }, target.ws);
@@ -49702,14 +49711,17 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
     }
   );
   server.tool(
-    "list_slide_shapes",
-    "List all shapes on a slide with their IDs, types, and positions, plus slide dimensions (slideWidth, slideHeight in points). Lighter than get_slide \u2014 omits text and fill data.",
+    "scan_slide",
+    "Lightweight shape scanner (~40 tokens/shape): lists shape IDs, types, and positions on slides, plus slide dimensions. Supports slideRange for multiple slides. For text content and fills, use inspect_slide instead.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
+      slideRange: external_exports3.string().describe('Slide indices to scan, e.g. "0", "0-5", "2,4,7". Single index or range.'),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
-    async ({ slideIndex, presentationId }) => {
+    async ({ slideRange, presentationId }) => {
       try {
+        const indices = parseSlideRange(slideRange) ?? [];
+        if (indices.length === 0) throw new Error("slideRange is required");
+        const indicesJs = JSON.stringify(indices);
         const code = `
           var p = context.presentation;
           var slides = p.slides;
@@ -49717,26 +49729,36 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
           slides.load("items");
           ps.load("slideWidth,slideHeight");
           await context.sync();
-          if (${slideIndex} >= slides.items.length) {
-            throw new Error("Slide index " + ${slideIndex} + " out of range (presentation has " + slides.items.length + " slides)");
+          var requestedIndices = ${indicesJs};
+          for (var i = 0; i < requestedIndices.length; i++) {
+            if (requestedIndices[i] >= slides.items.length) {
+              throw new Error("Slide index " + requestedIndices[i] + " out of range (presentation has " + slides.items.length + " slides)");
+            }
           }
-          var slide = slides.items[${slideIndex}];
-          slide.shapes.load("items");
+          for (var i = 0; i < requestedIndices.length; i++) {
+            slides.items[requestedIndices[i]].shapes.load("items");
+          }
           await context.sync();
-          var shapes = [];
-          for (var i = 0; i < slide.shapes.items.length; i++) {
-            var s = slide.shapes.items[i];
-            shapes.push({
-              id: s.id,
-              name: s.name,
-              type: s.type,
-              left: s.left,
-              top: s.top,
-              width: s.width,
-              height: s.height
-            });
+          var output = [];
+          for (var i = 0; i < requestedIndices.length; i++) {
+            var idx = requestedIndices[i];
+            var slide = slides.items[idx];
+            var shapes = [];
+            for (var j = 0; j < slide.shapes.items.length; j++) {
+              var s = slide.shapes.items[j];
+              shapes.push({
+                id: s.id,
+                name: s.name,
+                type: s.type,
+                left: s.left,
+                top: s.top,
+                width: s.width,
+                height: s.height
+              });
+            }
+            output.push({ slideIndex: idx, slideId: slide.id, shapes: shapes });
           }
-          return { slideIndex: ${slideIndex}, slideId: slide.id, slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, shapes: shapes };
+          return { slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `;
         const target = pool2.resolveTarget(presentationId);
         const result = await pool2.sendCommand("executeCode", { code }, target.ws);
@@ -49750,10 +49772,10 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
     }
   );
   server.tool(
-    "get_slide_image",
-    "Captures a visual screenshot of a specific slide as a PNG image. Use this to SEE what a slide looks like \u2014 useful for verifying layout after changes or understanding content visually. Requires PowerPoint 16.96+ (PowerPointApi 1.8).",
+    "screenshot_slide",
+    "Slide screenshot (~1000 tokens): captures one slide as PNG image. Use to visually verify layout after changes. Do NOT loop over all slides \u2014 use preview_deck instead.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from list_slides results"),
       width: external_exports3.number().int().min(1).max(4096).optional().describe(
         "Image width in pixels. Default: 720. Height auto-calculated to preserve aspect ratio unless also specified."
       ),
@@ -49939,8 +49961,8 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
     }
   );
   server.tool(
-    "get_deck_overview",
-    "Returns a visual overview of all (or selected) slides in one call \u2014 thumbnails interleaved with text metadata. Much more efficient than calling get_slide + get_slide_image per slide. Use this to review or audit an entire presentation quickly.",
+    "preview_deck",
+    "Deck preview: batch overview of all/selected slides with optional thumbnails + text. With images: ~900 tokens/slide; text-only (includeImages=false): ~35 tokens/slide. Use for visual review or content audit. Do NOT use to inspect one slide \u2014 use inspect_slide or screenshot_slide instead.",
     {
       slideRange: external_exports3.string().optional().describe('Slide indices to include, e.g. "0-5", "2,4,7", "0-2,5,8-10". Omit for all slides.'),
       imageWidth: external_exports3.number().int().min(120).max(1920).optional().describe("Thumbnail width in pixels. Default: 480. Height auto-calculated to preserve aspect ratio."),
@@ -50131,8 +50153,8 @@ ${textParts.join("\n")}` : "\n(no text content)";
     "read_slide_text",
     "Read raw OOXML <a:p> paragraphs from a shape's text body. Returns the paragraph XML as a string \u2014 preserves all formatting (bold, colors, bullets, etc.) that textRange.text strips. Use with the /pptx skill's OOXML knowledge to understand and modify the XML.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
-      shapeId: external_exports3.string().describe('Shape ID from get_slide results (e.g. "5")'),
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from list_slides results"),
+      shapeId: external_exports3.string().describe('Shape ID from inspect_slide results (e.g. "5")'),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
     async ({ slideIndex, shapeId, presentationId }) => {
@@ -50158,7 +50180,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
     "Replace paragraph content of a shape with raw OOXML <a:p> XML. Preserves <a:bodyPr> and <a:lstStyle>. Use read_slide_text first to get the current XML, modify it (using /pptx skill knowledge), then write it back. The slide is exported, modified server-side, and reimported \u2014 data never enters Claude's context.",
     {
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
-      shapeId: external_exports3.string().describe("Shape ID from get_slide results"),
+      shapeId: external_exports3.string().describe("Shape ID from inspect_slide results"),
       xml: external_exports3.string().describe("The <a:p> paragraph XML to replace the current text body content with"),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
@@ -50188,7 +50210,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
     "read_slide_xml",
     "Read the full raw OOXML of a slide, or filter to a specific shape. Returns the slide's ppt/slides/slide1.xml content. Use with the /pptx skill's OOXML knowledge to understand the XML structure.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from list_slides results"),
       shapeId: external_exports3.string().optional().describe("Optional shape ID to filter to. If provided, returns only that shape's <p:sp> element."),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
@@ -50335,7 +50357,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
   );
   server.tool(
     "verify_slides",
-    "Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, and tiny shapes. Returns a list of issues found. Uses the same shape data as get_slide \u2014 no OOXML needed.",
+    "Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, and tiny shapes. Returns a list of issues found. Uses the same shape data as inspect_slide \u2014 no OOXML needed.",
     {
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
       checks: external_exports3.array(external_exports3.enum(["overlap", "bounds", "empty_text", "tiny_shapes"])).optional().describe("Checks to run. Default: all four checks."),
@@ -50825,7 +50847,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
       shapes: external_exports3.array(
         external_exports3.object({
-          id: external_exports3.string().describe("Shape ID from get_slide or list_slide_shapes"),
+          id: external_exports3.string().describe("Shape ID from inspect_slide or scan_slide"),
           fill: external_exports3.string().optional().describe('Fill color as hex without # (e.g., "1A1A1E")'),
           font: external_exports3.object({
             bold: external_exports3.boolean().optional(),
