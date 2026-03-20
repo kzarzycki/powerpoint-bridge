@@ -6,6 +6,7 @@ import { DOMParser } from '@xmldom/xmldom'
 import { z } from 'zod'
 import type { ConnectionPool } from './bridge.ts'
 import { buildChartRelationship, buildChartXml, buildGraphicFrame, resolveChartPosition } from './chart-builder.ts'
+import { recolorSvg, searchIcons } from './icons.ts'
 import {
   autoRegisterContentTypes,
   escapeXml,
@@ -508,12 +509,18 @@ export function registerTools(
       top: z.number().optional().describe('Vertical position in points'),
       width: z.number().optional().describe('Image width in points'),
       height: z.number().optional().describe('Image height in points'),
+      color: z
+        .string()
+        .optional()
+        .describe(
+          'Hex color to tint SVG images (e.g. "#FF5733"). Only applies to SVG sources. Works best with mono/outline icons.',
+        ),
       presentationId: z
         .string()
         .optional()
         .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
     },
-    async ({ source, sourceType, slideIndex, left, top, width, height, presentationId }) => {
+    async ({ source, sourceType, slideIndex, left, top, width, height, color, presentationId }) => {
       try {
         // Step 1: Resolve image to base64
         let base64Data: string
@@ -528,6 +535,16 @@ export function registerTools(
           base64Data = Buffer.from(buf).toString('base64')
         } else {
           base64Data = source
+        }
+
+        // Step 1b: Recolor SVG if color is provided
+        if (color) {
+          const svg = Buffer.from(base64Data, 'base64').toString('utf-8')
+          if (svg.trimStart().startsWith('<svg') || svg.trimStart().startsWith('<?xml')) {
+            base64Data = Buffer.from(recolorSvg(svg, color)).toString('base64')
+          } else {
+            throw new Error('color parameter only works with SVG images, but the source is not SVG')
+          }
         }
 
         // Step 2: Build options object string with only provided params
@@ -1827,6 +1844,29 @@ return { success: true, shapesFormatted: ${shapes.length} };`
         const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
         const text = JSON.stringify(result ?? { success: true }, null, 2) + (warning ?? '')
         return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: search_fluent_icons ---
+  server.tool(
+    'search_fluent_icons',
+    'Search Microsoft Fluent UI icon library. Returns matching icons with SVG URLs for use with insert_image. Prefer mono (_M) variants for professional decks. Retry with synonyms if no good matches (e.g. "innovation" → "lightbulb", "security" → "shield").',
+    {
+      query: z.string().describe('Search query (e.g. "warning", "arrow down", "lightbulb")'),
+      top: z.number().int().min(1).max(50).optional().describe('Max results to return (default 10)'),
+      style: z
+        .enum(['regular', 'filled'])
+        .optional()
+        .describe('Filter by style: "regular" for mono/outline icons, "filled" for solid icons. Omit for both.'),
+    },
+    async ({ query, top, style }) => {
+      try {
+        const results = await searchIcons(query, top ?? 10, style)
+        return { content: [{ type: 'text' as const, text: JSON.stringify(results, null, 2) }] }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
