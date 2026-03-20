@@ -67,7 +67,7 @@ Key return formats to know:
 
 - **`scan_slide`** returns `{ slideWidth, slideHeight, slides: [{ slideIndex, slideId, shapes: [{ id, name, type, left, top, width, height }] }] }` — `id` is a stable numeric string (use this for read/edit tools); `name` is locale-dependent (never use as selector); `type` is one of "GeometricShape", "TextBox", "Table", "Chart", "Picture", "Group"
 - **`verify_slides`** returns `{ slideIndex, issues: [{ type, description, shapeIds }] }` — `type` is "overlap", "bounds", "empty_text", "tiny_shapes", or "unused_placeholder"; `shapeIds` are stable IDs
-- **`search_icons`** returns `[{ id, description, isMono, contentTier, searchScore }]` — `isMono: false` = filled/colorful, `isMono: true` = outline/mono; pick highest `searchScore` matching intent
+- **`search_fluent_icons`** returns `[{ id, description, isMono, contentTier, searchScore, svgUrl }]` — `isMono: false` = filled/colorful, `isMono: true` = outline/mono; pick highest `searchScore` matching intent; use `svgUrl` with `insert_image` (sourceType: "url") to insert
 - **`read_slide_text`** returns raw OOXML `<a:p>` paragraph elements (does NOT include `<a:bodyPr>` or `<a:lstStyle>`)
 - **`read_slide_zip`** returns `{ zipContents: { path: content }, allPaths: [...] }`
 
@@ -80,7 +80,7 @@ Key return formats to know:
 | `format_shapes` | Uses `getTextFrameOrNullObject()` internally. Cannot set corner radius, borders, or gradients — use `edit_slide_xml` code mode for those. Color format: hex without `#`. |
 | `edit_slide_master` | The `zip` contains the full PPTX structure (not a single slide). `p:bg` must be first child of `p:cSld`. |
 | `verify_slides` | Must auto-size shapes first or stale dimensions cause missed overlaps. Table overflow needs API fix, not OOXML. |
-| `insert_icon` | `noChangeAspect` is locked (can't stretch). `color` requires `#` prefix: `"#FF5733"`. Do NOT use `shape.fill.setSolidColor()` for icons. |
+| `insert_image` | `color` param recolors SVG images only (e.g. Fluent UI icons from `search_fluent_icons`). Errors on non-SVG. `#` prefix required: `"#FF5733"`. |
 | `execute_officejs` | Loaded values are snapshots — don't branch on stale reads after writes without re-load + re-sync. |
 
 ### OOXML sz Units (hundredths of a point)
@@ -350,7 +350,7 @@ For charts, use `edit_slide_chart` (declarative) or `edit_slide_zip` (raw OOXML)
 - Prefer more slides with less content over fewer dense slides
 - Use full slide area — stretch content to fill, don't leave large margins
 - Never use emoji or Unicode symbols as icons — use geometric shapes as icon substitutes
-- **Use icons to enhance content slides.** When a slide has key points, categories, or features, add relevant icons alongside the text. Always attempt `search_icons` before falling back to geometric shapes.
+- **Use icons to enhance content slides.** When a slide has key points, categories, or features, add relevant icons alongside the text. Always attempt `search_fluent_icons` before falling back to geometric shapes.
 
 ## Slide Layout Recipes
 

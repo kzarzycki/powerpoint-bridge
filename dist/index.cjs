@@ -14725,10 +14725,10 @@ var require_dom_parser = __commonJS({
     function normalizeLineEndings(input) {
       return input.replace(/\r[\n\u0085]/g, "\n").replace(/[\r\u0085\u2028]/g, "\n");
     }
-    function DOMParser2(options) {
+    function DOMParser3(options) {
       this.options = options || { locator: {} };
     }
-    DOMParser2.prototype.parseFromString = function(source, mimeType) {
+    DOMParser3.prototype.parseFromString = function(source, mimeType) {
       var options = this.options;
       var sax2 = new XMLReader();
       var domBuilder = options.domBuilder || new DOMHandler();
@@ -14923,7 +14923,7 @@ var require_dom_parser = __commonJS({
     }
     exports2.__DOMHandler = DOMHandler;
     exports2.normalizeLineEndings = normalizeLineEndings;
-    exports2.DOMParser = DOMParser2;
+    exports2.DOMParser = DOMParser3;
   }
 });
 
@@ -49162,6 +49162,7 @@ function substituteManifestPort(content, defaultPort, targetPort) {
 var import_node_fs2 = require("node:fs");
 var import_node_os = require("node:os");
 var import_node_path2 = require("node:path");
+var import_xmldom2 = __toESM(require_lib(), 1);
 
 // server/chart-builder.ts
 var C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart";
@@ -49358,7 +49359,6 @@ var MANIFEST_URL = "https://raw.githubusercontent.com/microsoft/fluentui-system-
 var CDN_BASE = "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/main/assets";
 var DEFAULT_SIZE = 24;
 var cachedIndex = null;
-var svgCache = /* @__PURE__ */ new Map();
 function snakeToTitle(s) {
   return s.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
@@ -49368,18 +49368,6 @@ function titleToSnake(s) {
 function nameToId(name, mono) {
   const base = `Icons_${name.replace(/\s+/g, "_")}`;
   return mono ? `${base}_M` : base;
-}
-function parseIconId(iconId) {
-  let id = iconId;
-  let isMono = false;
-  if (id.endsWith("_M")) {
-    isMono = true;
-    id = id.slice(0, -2);
-  }
-  if (id.startsWith("Icons_")) {
-    id = id.slice(6);
-  }
-  return { snakeName: id.toLowerCase(), isMono };
 }
 function buildIndexFromManifest(manifest) {
   const seen = /* @__PURE__ */ new Set();
@@ -49472,14 +49460,16 @@ async function searchIcons(query, top = 10, style) {
         description: `${entry.name} (mono/outline)`,
         isMono: true,
         contentTier: "free",
-        searchScore: score
+        searchScore: score,
+        svgUrl: buildSvgUrl(entry.snakeName, true)
       });
       results.push({
         id: nameToId(entry.name, false),
         description: `${entry.name} (filled)`,
         isMono: false,
         contentTier: "free",
-        searchScore: score
+        searchScore: score,
+        svgUrl: buildSvgUrl(entry.snakeName, false)
       });
     }
     return results.slice(0, top);
@@ -49489,7 +49479,8 @@ async function searchIcons(query, top = 10, style) {
     description: `${entry.name} (${isMono ? "mono/outline" : "filled"})`,
     isMono,
     contentTier: "free",
-    searchScore: score
+    searchScore: score,
+    svgUrl: buildSvgUrl(entry.snakeName, isMono)
   }));
 }
 function buildSvgUrl(snakeName, isMono) {
@@ -49507,24 +49498,6 @@ function recolorSvg(svg, color) {
     '$1 class="icon-color"$2'
   );
   return result;
-}
-async function fetchIconSvg(iconId, color) {
-  const { snakeName, isMono } = parseIconId(iconId);
-  const cacheKey2 = `${snakeName}:${isMono ? "regular" : "filled"}`;
-  let svg = svgCache.get(cacheKey2);
-  if (!svg) {
-    const url2 = buildSvgUrl(snakeName, isMono);
-    const resp = await fetch(url2);
-    if (!resp.ok) {
-      throw new Error(`Failed to fetch icon SVG: ${resp.status} ${resp.statusText} (${url2})`);
-    }
-    svg = await resp.text();
-    svgCache.set(cacheKey2, svg);
-  }
-  if (color) {
-    svg = recolorSvg(svg, color);
-  }
-  return Buffer.from(svg).toString("base64");
 }
 
 // server/xml-helpers.ts
@@ -49557,6 +49530,7 @@ async function reimportSlide(pool2, modifiedBase64, slideId, prevSlideId, target
     var slides = context.presentation.slides;
     slides.load("items");
     await context.sync();
+    var countBefore = slides.items.length;
     // Find and delete the original slide by ID
     var found = false;
     for (var i = 0; i < slides.items.length; i++) {
@@ -49569,16 +49543,24 @@ async function reimportSlide(pool2, modifiedBase64, slideId, prevSlideId, target
     if (!found) {
       throw new Error("Original slide not found for reimport (ID: ${slideId})");
     }
-    await context.sync();
-    // Insert modified slide at the correct position
+    // Batch delete + insert in one sync to reduce the window for partial failure
     context.presentation.insertSlidesFromBase64("${modifiedBase64}", ${optionsStr});
     await context.sync();
+    // Verify slide count is unchanged (deleted one, inserted one)
+    slides.load("items");
+    await context.sync();
+    if (slides.items.length !== countBefore) {
+      throw new Error("Reimport verification failed: expected " + countBefore + " slides but found " + slides.items.length);
+    }
     return { success: true };
   `;
   await pool2.sendCommand("executeCode", { code }, targetWs, timeout);
 }
 var NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main";
 var NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+function escapeXml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
 function parseSlideXml(xmlString) {
   return new import_xmldom.DOMParser().parseFromString(xmlString, "text/xml");
 }
@@ -49771,32 +49753,107 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
     }
   );
   server.tool(
-    "get_presentation",
-    "Returns the structure of the currently open PowerPoint presentation including all slides with their IDs and shape summaries (count, names, types). Use this first to understand what's in the presentation before making changes.",
+    "list_slides",
+    "Lightweight deck index (~5 tokens/slide): returns slide dimensions (slideWidth, slideHeight) and all slides with index, ID, and shape count. Use as the first call to understand deck structure. For shape details, follow up with scan_slide or inspect_slide on specific slides.",
     {
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
     async ({ presentationId }) => {
       try {
         const code = `
-          var slides = context.presentation.slides;
+          var p = context.presentation;
+          var slides = p.slides;
+          var ps = p.pageSetup;
           slides.load("items");
-          await context.sync();
-          for (var i = 0; i < slides.items.length; i++) {
-            slides.items[i].shapes.load("items");
-          }
+          ps.load("slideWidth,slideHeight");
           await context.sync();
           var output = [];
           for (var i = 0; i < slides.items.length; i++) {
             var slide = slides.items[i];
+            slide.shapes.load("items");
+          }
+          await context.sync();
+          for (var i = 0; i < slides.items.length; i++) {
+            var slide = slides.items[i];
+            output.push({ index: i, id: slide.id, shapeCount: slide.shapes.items.length });
+          }
+          return { slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
+        `;
+        const target = pool2.resolveTarget(presentationId);
+        const result = await pool2.sendCommand("executeCode", { code }, target.ws);
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
+        const text = JSON.stringify(result, null, 2) + (warning ?? "");
+        return { content: [{ type: "text", text }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+  server.tool(
+    "inspect_slide",
+    "Detailed slide inspector (~80 tokens/shape): returns every shape with text content, positions, sizes, and fill colors, plus slide dimensions. Supports slideRange for multiple slides. For just positions without text/fills, use scan_slide instead.",
+    {
+      slideRange: external_exports3.string().describe('Slide indices to inspect, e.g. "0", "0-5", "2,4,7". Single index or range.'),
+      presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
+    },
+    async ({ slideRange, presentationId }) => {
+      try {
+        const indices = parseSlideRange(slideRange) ?? [];
+        if (indices.length === 0) throw new Error("slideRange is required");
+        const indicesJs = JSON.stringify(indices);
+        const code = `
+          var p = context.presentation;
+          var slides = p.slides;
+          var ps = p.pageSetup;
+          slides.load("items");
+          ps.load("slideWidth,slideHeight");
+          await context.sync();
+          var requestedIndices = ${indicesJs};
+          for (var i = 0; i < requestedIndices.length; i++) {
+            if (requestedIndices[i] >= slides.items.length) {
+              throw new Error("Slide index " + requestedIndices[i] + " out of range (presentation has " + slides.items.length + " slides)");
+            }
+          }
+          for (var i = 0; i < requestedIndices.length; i++) {
+            slides.items[requestedIndices[i]].shapes.load("items");
+          }
+          await context.sync();
+          var output = [];
+          for (var i = 0; i < requestedIndices.length; i++) {
+            var idx = requestedIndices[i];
+            var slide = slides.items[idx];
             var shapes = [];
             for (var j = 0; j < slide.shapes.items.length; j++) {
               var s = slide.shapes.items[j];
-              shapes.push({ name: s.name, type: s.type, id: s.id });
+              var info = {
+                name: s.name,
+                type: s.type,
+                id: s.id,
+                left: s.left,
+                top: s.top,
+                width: s.width,
+                height: s.height
+              };
+              try {
+                s.textFrame.load("textRange");
+                await context.sync();
+                info.text = s.textFrame.textRange.text;
+              } catch (e) {
+                // Shape has no text frame (e.g., images, connectors)
+              }
+              try {
+                s.fill.load("foregroundColor,type");
+                await context.sync();
+                info.fill = { type: s.fill.type, color: s.fill.foregroundColor };
+              } catch (e) {
+                // Shape has no fill or fill not accessible
+              }
+              shapes.push(info);
             }
-            output.push({ index: i, id: slide.id, shapeCount: shapes.length, shapes: shapes });
+            output.push({ slideIndex: idx, slideId: slide.id, shapes: shapes });
           }
-          return output;
+          return { slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `;
         const target = pool2.resolveTarget(presentationId);
         const result = await pool2.sendCommand("executeCode", { code }, target.ws);
@@ -49810,53 +49867,54 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
     }
   );
   server.tool(
-    "get_slide",
-    "Returns detailed information about all shapes on a specific slide, including text content, positions (left, top in points), sizes (width, height in points), and fill colors. Use slideIndex from get_presentation results (zero-based).",
+    "scan_slide",
+    "Lightweight shape scanner (~40 tokens/shape): lists shape IDs, types, and positions on slides, plus slide dimensions. Supports slideRange for multiple slides. For text content and fills, use inspect_slide instead.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
+      slideRange: external_exports3.string().describe('Slide indices to scan, e.g. "0", "0-5", "2,4,7". Single index or range.'),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
-    async ({ slideIndex, presentationId }) => {
+    async ({ slideRange, presentationId }) => {
       try {
+        const indices = parseSlideRange(slideRange) ?? [];
+        if (indices.length === 0) throw new Error("slideRange is required");
+        const indicesJs = JSON.stringify(indices);
         const code = `
-          var slides = context.presentation.slides;
+          var p = context.presentation;
+          var slides = p.slides;
+          var ps = p.pageSetup;
           slides.load("items");
+          ps.load("slideWidth,slideHeight");
           await context.sync();
-          if (${slideIndex} >= slides.items.length) {
-            throw new Error("Slide index " + ${slideIndex} + " out of range (presentation has " + slides.items.length + " slides)");
+          var requestedIndices = ${indicesJs};
+          for (var i = 0; i < requestedIndices.length; i++) {
+            if (requestedIndices[i] >= slides.items.length) {
+              throw new Error("Slide index " + requestedIndices[i] + " out of range (presentation has " + slides.items.length + " slides)");
+            }
           }
-          var slide = slides.items[${slideIndex}];
-          slide.shapes.load("items");
+          for (var i = 0; i < requestedIndices.length; i++) {
+            slides.items[requestedIndices[i]].shapes.load("items");
+          }
           await context.sync();
-          var shapes = [];
-          for (var i = 0; i < slide.shapes.items.length; i++) {
-            var s = slide.shapes.items[i];
-            var info = {
-              name: s.name,
-              type: s.type,
-              id: s.id,
-              left: s.left,
-              top: s.top,
-              width: s.width,
-              height: s.height
-            };
-            try {
-              s.textFrame.load("textRange");
-              await context.sync();
-              info.text = s.textFrame.textRange.text;
-            } catch (e) {
-              // Shape has no text frame (e.g., images, connectors)
+          var output = [];
+          for (var i = 0; i < requestedIndices.length; i++) {
+            var idx = requestedIndices[i];
+            var slide = slides.items[idx];
+            var shapes = [];
+            for (var j = 0; j < slide.shapes.items.length; j++) {
+              var s = slide.shapes.items[j];
+              shapes.push({
+                id: s.id,
+                name: s.name,
+                type: s.type,
+                left: s.left,
+                top: s.top,
+                width: s.width,
+                height: s.height
+              });
             }
-            try {
-              s.fill.load("foregroundColor,type");
-              await context.sync();
-              info.fill = { type: s.fill.type, color: s.fill.foregroundColor };
-            } catch (e) {
-              // Shape has no fill or fill not accessible
-            }
-            shapes.push(info);
+            output.push({ slideIndex: idx, slideId: slide.id, shapes: shapes });
           }
-          return { slideIndex: ${slideIndex}, slideId: slide.id, shapes: shapes };
+          return { slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `;
         const target = pool2.resolveTarget(presentationId);
         const result = await pool2.sendCommand("executeCode", { code }, target.ws);
@@ -49870,10 +49928,10 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
     }
   );
   server.tool(
-    "get_slide_image",
-    "Captures a visual screenshot of a specific slide as a PNG image. Use this to SEE what a slide looks like \u2014 useful for verifying layout after changes or understanding content visually. Requires PowerPoint 16.96+ (PowerPointApi 1.8).",
+    "screenshot_slide",
+    "Slide screenshot (~1000 tokens): captures one slide as PNG image. Use to visually verify layout after changes. Do NOT loop over all slides \u2014 use preview_deck instead.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from list_slides results"),
       width: external_exports3.number().int().min(1).max(4096).optional().describe(
         "Image width in pixels. Default: 720. Height auto-calculated to preserve aspect ratio unless also specified."
       ),
@@ -50001,9 +50059,12 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
       top: external_exports3.number().optional().describe("Vertical position in points"),
       width: external_exports3.number().optional().describe("Image width in points"),
       height: external_exports3.number().optional().describe("Image height in points"),
+      color: external_exports3.string().optional().describe(
+        'Hex color to tint SVG images (e.g. "#FF5733"). Only applies to SVG sources. Works best with mono/outline icons.'
+      ),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
-    async ({ source, sourceType, slideIndex, left, top, width, height, presentationId }) => {
+    async ({ source, sourceType, slideIndex, left, top, width, height, color, presentationId }) => {
       try {
         let base64Data;
         if (sourceType === "file") {
@@ -50017,6 +50078,14 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
           base64Data = Buffer.from(buf).toString("base64");
         } else {
           base64Data = source;
+        }
+        if (color) {
+          const svg = Buffer.from(base64Data, "base64").toString("utf-8");
+          if (svg.trimStart().startsWith("<svg") || svg.trimStart().startsWith("<?xml")) {
+            base64Data = Buffer.from(recolorSvg(svg, color)).toString("base64");
+          } else {
+            throw new Error("color parameter only works with SVG images, but the source is not SVG");
+          }
         }
         const optionsParts = ["coercionType: Office.CoercionType.Image"];
         if (left !== void 0) optionsParts.push(`imageLeft: ${left}`);
@@ -50059,8 +50128,8 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
     }
   );
   server.tool(
-    "get_deck_overview",
-    "Returns a visual overview of all (or selected) slides in one call \u2014 thumbnails interleaved with text metadata. Much more efficient than calling get_slide + get_slide_image per slide. Use this to review or audit an entire presentation quickly.",
+    "preview_deck",
+    "Deck preview: batch overview of all/selected slides with optional thumbnails + text. With images: ~900 tokens/slide; text-only (includeImages=false): ~35 tokens/slide. Use for visual review or content audit. Do NOT use to inspect one slide \u2014 use inspect_slide or screenshot_slide instead.",
     {
       slideRange: external_exports3.string().optional().describe('Slide indices to include, e.g. "0-5", "2,4,7", "0-2,5,8-10". Omit for all slides.'),
       imageWidth: external_exports3.number().int().min(120).max(1920).optional().describe("Thumbnail width in pixels. Default: 480. Height auto-calculated to preserve aspect ratio."),
@@ -50074,8 +50143,11 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
         const withImages = includeImages !== false;
         const indicesJs = indices ? JSON.stringify(indices) : "null";
         const code = `
-          var slides = context.presentation.slides;
+          var p = context.presentation;
+          var slides = p.slides;
+          var ps = p.pageSetup;
           slides.load("items");
+          ps.load("slideWidth,slideHeight");
           await context.sync();
           var requestedIndices = ${indicesJs};
           var indicesToProcess = requestedIndices || [];
@@ -50114,14 +50186,14 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
             slideData.imageBase64 = img.value;` : ""}
             output.push(slideData);
           }
-          return { slideCount: slides.items.length, slides: output };
+          return { slideCount: slides.items.length, slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `;
         const target = pool2.resolveTarget(presentationId);
         const result = await pool2.sendCommand("executeCode", { code }, target.ws, 12e4);
         const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
         const content = [];
         const showing = result.slides.length;
-        const header = `Deck overview: ${result.slideCount} total slides, showing ${showing}${warning ?? ""}`;
+        const header = `Deck overview: ${result.slideCount} total slides (${result.slideWidth} x ${result.slideHeight} pt), showing ${showing}${warning ?? ""}`;
         content.push({ type: "text", text: header });
         for (const slide of result.slides) {
           if (slide.imageBase64) {
@@ -50248,8 +50320,8 @@ ${textParts.join("\n")}` : "\n(no text content)";
     "read_slide_text",
     "Read raw OOXML <a:p> paragraphs from a shape's text body. Returns the paragraph XML as a string \u2014 preserves all formatting (bold, colors, bullets, etc.) that textRange.text strips. Use with the /pptx skill's OOXML knowledge to understand and modify the XML.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
-      shapeId: external_exports3.string().describe('Shape ID from get_slide results (e.g. "5")'),
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from list_slides results"),
+      shapeId: external_exports3.string().describe('Shape ID from inspect_slide results (e.g. "5")'),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
     async ({ slideIndex, shapeId, presentationId }) => {
@@ -50275,7 +50347,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
     "Replace paragraph content of a shape with raw OOXML <a:p> XML. Preserves <a:bodyPr> and <a:lstStyle>. Use read_slide_text first to get the current XML, modify it (using /pptx skill knowledge), then write it back. The slide is exported, modified server-side, and reimported \u2014 data never enters Claude's context.",
     {
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
-      shapeId: external_exports3.string().describe("Shape ID from get_slide results"),
+      shapeId: external_exports3.string().describe("Shape ID from inspect_slide results"),
       xml: external_exports3.string().describe("The <a:p> paragraph XML to replace the current text body content with"),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
@@ -50305,7 +50377,7 @@ ${textParts.join("\n")}` : "\n(no text content)";
     "read_slide_xml",
     "Read the full raw OOXML of a slide, or filter to a specific shape. Returns the slide's ppt/slides/slide1.xml content. Use with the /pptx skill's OOXML knowledge to understand the XML structure.",
     {
-      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from get_presentation results"),
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index from list_slides results"),
       shapeId: external_exports3.string().optional().describe("Optional shape ID to filter to. If provided, returns only that shape's <p:sp> element."),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
@@ -50331,22 +50403,57 @@ ${textParts.join("\n")}` : "\n(no text content)";
   );
   server.tool(
     "edit_slide_xml",
-    "Replace the full slide XML or a specific shape's XML and reimport. Use read_slide_xml first to get the current XML, modify it, then write it back. The slide is exported, modified server-side, and reimported \u2014 data never enters Claude's context.",
+    "Edit slide XML and reimport. Two modes: (1) xml mode \u2014 provide finished XML string (use read_slide_xml first to get current XML), (2) code mode \u2014 provide JS code that manipulates the pre-parsed DOM (receives: doc, findShapeById, NS_P, NS_A, escapeXml, serializeXml, DOMParser). Code mode preserves untouched attributes. The slide is exported, modified server-side, and reimported \u2014 data never enters Claude's context.",
     {
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
-      xml: external_exports3.string().describe("Modified XML \u2014 full slide XML or a single shape's <p:sp> element (when shapeId is provided)"),
+      xml: external_exports3.string().optional().describe(
+        "Modified XML \u2014 full slide XML or a single shape's <p:sp> element (when shapeId is provided). Mutually exclusive with 'code'."
+      ),
+      code: external_exports3.string().optional().describe(
+        "JS code that manipulates the pre-parsed slide DOM. Receives: doc (Document), findShapeById(id) \u2192 Element|null, NS_P, NS_A (namespace strings), escapeXml(text), serializeXml(node), DOMParser. Mutually exclusive with 'xml'."
+      ),
+      explanation: external_exports3.string().optional().describe("Brief description of what the code does (for logging, max 50 chars). Only used with code mode."),
       shapeId: external_exports3.string().optional().describe(
-        "Optional shape ID. If provided, replaces only that shape's <p:sp> element instead of the full slide XML."
+        "Optional shape ID (xml mode only). If provided, replaces only that shape's <p:sp> element instead of the full slide XML."
       ),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
-    async ({ slideIndex, xml, shapeId, presentationId }) => {
+    async ({ slideIndex, xml, code, shapeId, presentationId }) => {
+      if (!xml && !code || xml && code) {
+        return {
+          content: [
+            { type: "text", text: "Error: Provide either 'xml' or 'code', not both and not neither." }
+          ],
+          isError: true
+        };
+      }
       try {
         const target = pool2.resolveTarget(presentationId);
         const exported = await exportSlide(pool2, slideIndex, target.ws);
         const { zip, xmlString } = await extractSlideXmlFromZip(exported.base64);
         let finalXml;
-        if (shapeId) {
+        if (code) {
+          const doc = parseSlideXml(xmlString);
+          const sandbox = {
+            doc,
+            findShapeById: (id) => findShapeById(doc, id),
+            NS_P,
+            NS_A,
+            escapeXml,
+            serializeXml: (node) => serializeXml(node),
+            DOMParser: import_xmldom2.DOMParser
+          };
+          try {
+            const keys = Object.keys(sandbox);
+            const values = Object.values(sandbox);
+            const fn = new Function(...keys, code);
+            fn(...values);
+          } catch (codeErr) {
+            const msg = codeErr instanceof Error ? codeErr.message : String(codeErr);
+            throw new Error(`Code execution error: ${msg}`);
+          }
+          finalXml = serializeXml(doc);
+        } else if (shapeId) {
           const doc = parseSlideXml(xmlString);
           const shape = findShapeById(doc, shapeId);
           if (!shape) {
@@ -50417,16 +50524,16 @@ ${textParts.join("\n")}` : "\n(no text content)";
   );
   server.tool(
     "verify_slides",
-    "Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, and tiny shapes. Returns a list of issues found. Uses the same shape data as get_slide \u2014 no OOXML needed.",
+    "Run programmatic checks on a slide: detect overlapping shapes, out-of-bounds shapes, empty text, tiny shapes, and unused placeholders. Returns a list of issues found. Uses the same shape data as inspect_slide \u2014 no OOXML needed.",
     {
       slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
-      checks: external_exports3.array(external_exports3.enum(["overlap", "bounds", "empty_text", "tiny_shapes"])).optional().describe("Checks to run. Default: all four checks."),
+      checks: external_exports3.array(external_exports3.enum(["overlap", "bounds", "empty_text", "tiny_shapes", "unused_placeholder"])).optional().describe("Checks to run. Default: all five checks."),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
     async ({ slideIndex, checks, presentationId }) => {
       try {
         const target = pool2.resolveTarget(presentationId);
-        const enabledChecks = checks ?? ["overlap", "bounds", "empty_text", "tiny_shapes"];
+        const enabledChecks = checks ?? ["overlap", "bounds", "empty_text", "tiny_shapes", "unused_placeholder"];
         const code = `
           var slides = context.presentation.slides;
           slides.load("items");
@@ -50449,17 +50556,27 @@ ${textParts.join("\n")}` : "\n(no text content)";
               height: s.height
             };
             try {
-              s.textFrame.load("textRange");
+              var tf = s.getTextFrameOrNullObject();
+              tf.load(["hasText", "textRange"]);
               await context.sync();
-              info.text = s.textFrame.textRange.text;
+              if (!tf.isNullObject) {
+                info.text = tf.hasText ? tf.textRange.text : "";
+                info.hasText = tf.hasText;
+              }
+            } catch (e) {}
+            try {
+              var pf = s.getPlaceholderOrNullObject();
+              pf.load("type");
+              await context.sync();
+              if (!pf.isNullObject) info.isPlaceholder = true;
             } catch (e) {}
             shapes.push(info);
           }
           // Also get slide dimensions
-          var p = context.presentation;
-          p.load("slideWidth,slideHeight");
+          var ps = context.presentation.pageSetup;
+          ps.load("slideWidth,slideHeight");
           await context.sync();
-          return { shapes: shapes, slideWidth: p.slideWidth, slideHeight: p.slideHeight };
+          return { shapes: shapes, slideWidth: ps.slideWidth, slideHeight: ps.slideHeight };
         `;
         const slideData = await pool2.sendCommand("executeCode", { code }, target.ws);
         const issues = [];
@@ -50471,10 +50588,10 @@ ${textParts.join("\n")}` : "\n(no text content)";
               const b = shapes[j];
               if (a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + b.height && a.top + a.height > b.top) {
                 issues.push({
-                  check: "overlap",
+                  type: "overlap",
                   severity: "warning",
-                  shapes: [a.name, b.name],
-                  message: `"${a.name}" and "${b.name}" overlap`
+                  shapeIds: [a.id, b.id],
+                  description: `"${a.name}" and "${b.name}" overlap`
                 });
               }
             }
@@ -50489,10 +50606,10 @@ ${textParts.join("\n")}` : "\n(no text content)";
             if (s.top + s.height > slideHeight) outOfBounds.push("below slide");
             if (outOfBounds.length > 0) {
               issues.push({
-                check: "bounds",
+                type: "bounds",
                 severity: "warning",
-                shapes: [s.name],
-                message: `"${s.name}" extends ${outOfBounds.join(", ")}`
+                shapeIds: [s.id],
+                description: `"${s.name}" extends ${outOfBounds.join(", ")}`
               });
             }
           }
@@ -50501,10 +50618,10 @@ ${textParts.join("\n")}` : "\n(no text content)";
           for (const s of shapes) {
             if (s.text !== void 0 && s.text.trim() === "") {
               issues.push({
-                check: "empty_text",
+                type: "empty_text",
                 severity: "warning",
-                shapes: [s.name],
-                message: `"${s.name}" has an empty text frame`
+                shapeIds: [s.id],
+                description: `"${s.name}" has an empty text frame`
               });
             }
           }
@@ -50513,10 +50630,22 @@ ${textParts.join("\n")}` : "\n(no text content)";
           for (const s of shapes) {
             if (s.width < 10 || s.height < 10) {
               issues.push({
-                check: "tiny_shapes",
+                type: "tiny_shapes",
                 severity: "warning",
-                shapes: [s.name],
-                message: `"${s.name}" is very small (${s.width.toFixed(1)} x ${s.height.toFixed(1)} pt)`
+                shapeIds: [s.id],
+                description: `"${s.name}" is very small (${s.width.toFixed(1)} x ${s.height.toFixed(1)} pt)`
+              });
+            }
+          }
+        }
+        if (enabledChecks.includes("unused_placeholder")) {
+          for (const s of shapes) {
+            if (s.isPlaceholder && !s.hasText) {
+              issues.push({
+                type: "unused_placeholder",
+                severity: "warning",
+                shapeIds: [s.id],
+                description: `"${s.name}" is an unused placeholder \u2014 delete it or fill it with content`
               });
             }
           }
@@ -50684,6 +50813,293 @@ ${textParts.join("\n")}` : "\n(no text content)";
     }
   );
   server.tool(
+    "search_text",
+    "Search for text across all slides (or a slide range) in the presentation \u2014 like grep for slides. Searches shape text, table cells, and speaker notes. Returns matching shapes with context at the chosen level. Case-insensitive substring by default; supports regex.",
+    {
+      query: external_exports3.string().describe("Text to search for. Plain substring by default, or a regex pattern when regex=true."),
+      slideRange: external_exports3.string().optional().describe('Optional slide range to search, e.g. "0-4" or "2-7". Zero-based. Omit to search all slides.'),
+      caseSensitive: external_exports3.boolean().optional().describe("Case-sensitive search. Default: false."),
+      regex: external_exports3.boolean().optional().describe("Treat query as a regular expression. Default: false (plain substring)."),
+      context: external_exports3.enum(["shape", "slide", "none"]).optional().describe(
+        'Result detail level. "shape" (default): matching shapes with text. "slide": all shapes on matching slides with matched markers. "none": just matching slide indices.'
+      ),
+      includeNotes: external_exports3.boolean().optional().describe("Search speaker notes in addition to slide content. Default: true."),
+      presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
+    },
+    async ({ query, slideRange, caseSensitive, regex, context: contextLevel, includeNotes, presentationId }) => {
+      try {
+        const cs = caseSensitive === true;
+        const useRegex = regex === true;
+        const ctxLevel = contextLevel ?? "shape";
+        const searchNotes = includeNotes !== false;
+        const escapedQuery = JSON.stringify(query);
+        const code = `
+          var caseSensitive = ${cs};
+          var useRegex = ${useRegex};
+          var query = ${escapedQuery};
+          var ctxLevel = ${JSON.stringify(ctxLevel)};
+          var searchNotes = ${searchNotes};
+          var slideRangeStr = ${slideRange ? JSON.stringify(slideRange) : "null"};
+
+          function testMatch(text) {
+            if (useRegex) {
+              var flags = caseSensitive ? "" : "i";
+              var re = new RegExp(query, flags);
+              return re.test(text);
+            }
+            var a = caseSensitive ? text : text.toLowerCase();
+            var b = caseSensitive ? query : query.toLowerCase();
+            return a.indexOf(b) !== -1;
+          }
+
+          function extractShapeTexts(shapes) {
+            var results = [];
+            for (var j = 0; j < shapes.items.length; j++) {
+              var shape = shapes.items[j];
+              var texts = [];
+              try {
+                shape.textFrame.load("textRange");
+                try { shape.textFrame.textRange.load("text"); } catch(e) {}
+              } catch (e) {}
+              try {
+                if (shape.type === "Table") {
+                  shape.table.load("rowCount,columnCount");
+                }
+              } catch (e) {}
+            }
+            return shapes;
+          }
+
+          var slides = context.presentation.slides;
+          slides.load("items");
+          await context.sync();
+          var total = slides.items.length;
+          var startIdx = 0;
+          var endIdx = total - 1;
+          if (slideRangeStr) {
+            var parts = slideRangeStr.split("-");
+            startIdx = parseInt(parts[0], 10);
+            if (parts.length > 1) endIdx = parseInt(parts[1], 10);
+            else endIdx = startIdx;
+            if (startIdx < 0) startIdx = 0;
+            if (endIdx >= total) endIdx = total - 1;
+          }
+
+          var slideResults = [];
+          for (var si = startIdx; si <= endIdx; si++) {
+            var slide = slides.items[si];
+            slide.shapes.load("items");
+            await context.sync();
+
+            var shapeEntries = [];
+            var slideHasMatch = false;
+
+            for (var j = 0; j < slide.shapes.items.length; j++) {
+              var shape = slide.shapes.items[j];
+              var shapeId = String(shape.id);
+              var shapeName = shape.name;
+              var shapeType = shape.type;
+              var texts = [];
+
+              try {
+                shape.textFrame.load("textRange");
+                await context.sync();
+                var t = shape.textFrame.textRange.text;
+                if (t) texts.push({ source: "shape", text: t });
+              } catch (e) {}
+
+              if (shapeType === "Table") {
+                try {
+                  shape.table.load("rowCount,columnCount");
+                  await context.sync();
+                  var rc = shape.table.rowCount;
+                  var cc = shape.table.columnCount;
+                  for (var r = 0; r < rc; r++) {
+                    for (var c = 0; c < cc; c++) {
+                      try {
+                        var cell = shape.table.getCell(r, c);
+                        cell.body.load("text");
+                        await context.sync();
+                        if (cell.body.text) texts.push({ source: "tableCell", text: cell.body.text, row: r, col: c });
+                      } catch (e2) {}
+                    }
+                  }
+                } catch (e) {}
+              }
+
+              var matched = false;
+              for (var ti = 0; ti < texts.length; ti++) {
+                if (testMatch(texts[ti].text)) { matched = true; break; }
+              }
+
+              if (matched) slideHasMatch = true;
+
+              shapeEntries.push({
+                shapeId: shapeId,
+                shapeName: shapeName,
+                shapeType: shapeType,
+                matched: matched,
+                texts: texts
+              });
+            }
+
+            var noteText = null;
+            var noteMatched = false;
+            if (searchNotes) {
+              try {
+                var ns = slide.notesSlide;
+                ns.shapes.load("items");
+                await context.sync();
+                for (var ni = 0; ni < ns.shapes.items.length; ni++) {
+                  try {
+                    ns.shapes.items[ni].textFrame.load("textRange");
+                    await context.sync();
+                    var nt = ns.shapes.items[ni].textFrame.textRange.text;
+                    if (nt && nt.trim()) {
+                      noteText = (noteText || "") + nt;
+                    }
+                  } catch (e) {}
+                }
+                if (noteText && testMatch(noteText)) {
+                  noteMatched = true;
+                  slideHasMatch = true;
+                }
+              } catch (e) {}
+            }
+
+            if (slideHasMatch) {
+              if (ctxLevel === "none") {
+                slideResults.push(si);
+              } else if (ctxLevel === "slide") {
+                var entry = { slideIndex: si, shapes: [] };
+                for (var k = 0; k < shapeEntries.length; k++) {
+                  var se = shapeEntries[k];
+                  var shapeInfo = {
+                    shapeId: se.shapeId,
+                    shapeName: se.shapeName,
+                    matched: se.matched
+                  };
+                  for (var ti2 = 0; ti2 < se.texts.length; ti2++) {
+                    var tx = se.texts[ti2];
+                    if (tx.source === "shape") shapeInfo.text = tx.text;
+                    else if (tx.source === "tableCell") {
+                      if (!shapeInfo.tableCells) shapeInfo.tableCells = [];
+                      shapeInfo.tableCells.push({ row: tx.row, col: tx.col, text: tx.text, matched: testMatch(tx.text) });
+                    }
+                  }
+                  entry.shapes.push(shapeInfo);
+                }
+                if (noteText) entry.notes = { text: noteText, matched: noteMatched };
+                slideResults.push(entry);
+              } else {
+                for (var k2 = 0; k2 < shapeEntries.length; k2++) {
+                  var se2 = shapeEntries[k2];
+                  if (!se2.matched) continue;
+                  for (var ti3 = 0; ti3 < se2.texts.length; ti3++) {
+                    var tx2 = se2.texts[ti3];
+                    if (!testMatch(tx2.text)) continue;
+                    var m = { slideIndex: si, shapeId: se2.shapeId, shapeName: se2.shapeName, source: tx2.source, text: tx2.text };
+                    if (tx2.source === "tableCell") { m.row = tx2.row; m.col = tx2.col; }
+                    slideResults.push(m);
+                  }
+                }
+                if (noteMatched) {
+                  slideResults.push({ slideIndex: si, source: "note", text: noteText });
+                }
+              }
+            }
+          }
+
+          var result = { query: query, caseSensitive: caseSensitive, regex: useRegex, totalSlides: total };
+          if (ctxLevel === "none") {
+            result.matchingSlides = slideResults;
+          } else {
+            result.matches = slideResults;
+          }
+          return result;
+        `;
+        const target = pool2.resolveTarget(presentationId);
+        const result = await pool2.sendCommand("executeCode", { code }, target.ws);
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
+        const text = JSON.stringify(result, null, 2) + (warning ?? "");
+        return { content: [{ type: "text", text }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+  server.tool(
+    "format_shapes",
+    "Apply formatting to multiple shapes on a slide in one call. Generates Office.js code internally. Use for fill color, font bold/italic/size/color/name. Cannot set corner radius or borders (use edit_slide_xml code mode for those).",
+    {
+      slideIndex: external_exports3.number().int().min(0).describe("Zero-based slide index"),
+      shapes: external_exports3.array(
+        external_exports3.object({
+          id: external_exports3.string().describe("Shape ID from inspect_slide or scan_slide"),
+          fill: external_exports3.string().optional().describe('Fill color as hex without # (e.g., "1A1A1E")'),
+          font: external_exports3.object({
+            bold: external_exports3.boolean().optional(),
+            italic: external_exports3.boolean().optional(),
+            size: external_exports3.number().optional().describe("Font size in points"),
+            color: external_exports3.string().optional().describe('Font color as hex without # (e.g., "FFFFFF")'),
+            name: external_exports3.string().optional().describe('Font name (e.g., "Calibri")')
+          }).optional()
+        })
+      ).min(1).describe("Shapes to format with their properties"),
+      presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
+    },
+    async ({ slideIndex, shapes, presentationId }) => {
+      try {
+        const target = pool2.resolveTarget(presentationId);
+        const shapeOps = shapes.map((s) => {
+          const lines = [];
+          lines.push(`  var s = shapeMap["${s.id}"];`);
+          lines.push(
+            `  if (!s) throw new Error("Shape " + ${JSON.stringify(s.id)} + " not found on slide ${slideIndex}");`
+          );
+          if (s.fill) {
+            lines.push(`  s.fill.setSolidColor("${s.fill}");`);
+          }
+          if (s.font) {
+            lines.push(`  var tf = s.getTextFrameOrNullObject();`);
+            lines.push(`  await context.sync();`);
+            lines.push(`  if (!tf.isNullObject) {`);
+            lines.push(`    var tr = tf.textRange;`);
+            if (s.font.bold !== void 0) lines.push(`    tr.font.bold = ${s.font.bold};`);
+            if (s.font.italic !== void 0) lines.push(`    tr.font.italic = ${s.font.italic};`);
+            if (s.font.size !== void 0) lines.push(`    tr.font.size = ${s.font.size};`);
+            if (s.font.color !== void 0) lines.push(`    tr.font.color = "${s.font.color}";`);
+            if (s.font.name !== void 0) lines.push(`    tr.font.name = "${s.font.name}";`);
+            lines.push(`  }`);
+          }
+          return lines.join("\n");
+        }).join("\n");
+        const code = `
+var slides = context.presentation.slides;
+slides.load("items");
+await context.sync();
+var slide = slides.items[${slideIndex}];
+slide.shapes.load("items");
+await context.sync();
+var shapeMap = {};
+for (var i = 0; i < slide.shapes.items.length; i++) {
+  shapeMap[slide.shapes.items[i].id] = slide.shapes.items[i];
+}
+${shapeOps}
+await context.sync();
+return { success: true, shapesFormatted: ${shapes.length} };`;
+        const result = await pool2.sendCommand("executeCode", { code }, target.ws);
+        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
+        const text = JSON.stringify(result ?? { success: true }, null, 2) + (warning ?? "");
+        return { content: [{ type: "text", text }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+  server.tool(
     "execute_officejs",
     "Execute arbitrary Office.js code inside the live PowerPoint presentation. The code runs inside PowerPoint.run(async (context) => { ... }) with 'context' available as a variable. Use 'await context.sync()' after loading properties. Return a value to get it back as the tool result. For positioning, all values are in points (1 point = 1/72 inch). Common operations: add shapes, set text, change colors, add/delete slides.",
     {
@@ -50706,8 +51122,8 @@ ${textParts.join("\n")}` : "\n(no text content)";
     }
   );
   server.tool(
-    "search_icons",
-    'Search Microsoft Fluent UI icon library. Returns matching icons with IDs for use with insert_icon. Prefer mono (_M) variants for professional decks. Retry with synonyms if no good matches (e.g. "innovation" \u2192 "lightbulb", "security" \u2192 "shield").',
+    "search_fluent_icons",
+    'Search Microsoft Fluent UI icon library. Returns matching icons with SVG URLs for use with insert_image. Prefer mono (_M) variants for professional decks. Retry with synonyms if no good matches (e.g. "innovation" \u2192 "lightbulb", "security" \u2192 "shield").',
     {
       query: external_exports3.string().describe('Search query (e.g. "warning", "arrow down", "lightbulb")'),
       top: external_exports3.number().int().min(1).max(50).optional().describe("Max results to return (default 10)"),
@@ -50723,62 +51139,58 @@ ${textParts.join("\n")}` : "\n(no text content)";
       }
     }
   );
-  server.tool(
-    "insert_icon",
-    "Insert a Fluent UI icon onto a slide. Fetches SVG from CDN, optionally recolors it, and inserts via Office.js. Use search_icons first to find the icon ID. Pass color as hex to tint mono icons.",
-    {
-      iconId: external_exports3.string().describe('Icon ID from search_icons (e.g. "Icons_Warning_M" for mono, "Icons_Warning" for filled)'),
-      slideIndex: external_exports3.number().int().min(0).optional().describe("Zero-based slide index. If omitted, inserts on the currently active slide."),
-      x: external_exports3.number().optional().describe("Horizontal position in points (1 point = 1/72 inch)"),
-      y: external_exports3.number().optional().describe("Vertical position in points"),
-      width: external_exports3.number().optional().describe("Icon width in points (default 72)"),
-      height: external_exports3.number().optional().describe("Icon height in points (default 72)"),
-      color: external_exports3.string().optional().describe('Hex color to tint the icon (e.g. "#FF5733"). Works best with mono (_M) icons.'),
-      presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
-    },
-    async ({ iconId, slideIndex, x, y, width, height, color, presentationId }) => {
-      try {
-        const base64Data = await fetchIconSvg(iconId, color);
-        const optionsParts = ["coercionType: Office.CoercionType.Image"];
-        if (x !== void 0) optionsParts.push(`imageLeft: ${x}`);
-        if (y !== void 0) optionsParts.push(`imageTop: ${y}`);
-        if (width !== void 0) optionsParts.push(`imageWidth: ${width}`);
-        if (height !== void 0) optionsParts.push(`imageHeight: ${height}`);
-        const optionsStr = `{ ${optionsParts.join(", ")} }`;
-        const insertCall = `Office.context.document.setSelectedDataAsync("${base64Data}", ${optionsStr}, function(result) {
-        if (result.status === Office.AsyncResultStatus.Succeeded) {
-          resolve({ success: true });
-        } else {
-          reject(new Error(result.error.message));
-        }
-      });`;
-        let code;
-        if (slideIndex !== void 0) {
-          code = `return new Promise(function(resolve, reject) {
-      Office.context.document.goToByIdAsync(${slideIndex + 1}, Office.GoToType.Index, function(navResult) {
-        if (navResult.status !== Office.AsyncResultStatus.Succeeded) {
-          reject(new Error("Navigation failed: " + navResult.error.message));
-          return;
-        }
-        ${insertCall}
-      });
-    });`;
-        } else {
-          code = `return new Promise(function(resolve, reject) {
-      ${insertCall}
-    });`;
-        }
-        const target = pool2.resolveTarget(presentationId);
-        const result = await pool2.sendCommand("executeCode", { code }, target.ws);
-        const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
-        const text = JSON.stringify(result ?? { success: true, iconId }, null, 2) + (warning ?? "");
-        return { content: [{ type: "text", text }] };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
-      }
+}
+
+// server/version-check.ts
+async function checkForUpdate(options) {
+  const {
+    currentVersion,
+    packageName = "powerpoint-bridge",
+    registryUrl = "https://registry.npmjs.org",
+    timeoutMs = 3e3
+  } = options;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${registryUrl}/${packageName}/latest`, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" }
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const latest = data.version;
+    if (!latest) return null;
+    return {
+      latest,
+      current: currentVersion,
+      updateAvailable: isNewer(latest, currentVersion)
+    };
+  } catch {
+    return null;
+  }
+}
+function isNewer(latest, current) {
+  const parse3 = (v) => v.replace(/^v/, "").split("-")[0].split(".").map(Number);
+  const [lMajor = 0, lMinor = 0, lPatch = 0] = parse3(latest);
+  const [cMajor = 0, cMinor = 0, cPatch = 0] = parse3(current);
+  if (lMajor !== cMajor) return lMajor > cMajor;
+  if (lMinor !== cMinor) return lMinor > cMinor;
+  return lPatch > cPatch;
+}
+function runVersionCheck(currentVersion) {
+  if (process.env.BRIDGE_NO_UPDATE_CHECK === "1") return;
+  if (process.argv.includes("--no-update-check")) return;
+  checkForUpdate({ currentVersion }).then((result) => {
+    if (result?.updateAvailable) {
+      console.error(
+        `
+  Update available: v${result.current} \u2192 v${result.latest}
+  Run "npm update -g powerpoint-bridge" to upgrade
+`
+      );
     }
-  );
+  });
 }
 
 // server/index.ts
@@ -51131,6 +51543,11 @@ if (stdioActive) {
   stdioMcpServer.connect(stdioTransport).then(() => {
     console.error("MCP STDIO transport running");
   });
+}
+try {
+  const pkg = JSON.parse((0, import_node_fs3.readFileSync)((0, import_node_path3.resolve)(PROJECT_ROOT, "package.json"), "utf8"));
+  runVersionCheck(pkg.version);
+} catch {
 }
 var activeInterfaces = [
   stdioActive && "STDIO",

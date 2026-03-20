@@ -683,24 +683,24 @@ shape.setZOrder("BringToFront"); // or "BringForward", "SendBackward", "SendToBa
 
 ## Icons
 
-Workflow: `search_icons` → `insert_icon`
+Workflow: `search_fluent_icons` → `insert_image`
 
 ```
-search_icons(query: "warning", top: 5)
-// Returns: [{ id, description, isMono, contentTier, searchScore }]
+search_fluent_icons(query: "warning", top: 5)
+// Returns: [{ id, description, isMono, contentTier, searchScore, svgUrl }]
 
-insert_icon(iconId: "Icons_Warning", slideIndex: 0, x: 100, y: 100, width: 48, height: 48, color: "#FF5733")
+insert_image(source: result.svgUrl, sourceType: "url", slideIndex: 0, left: 100, top: 100, width: 48, height: 48, color: "#FF5733")
 ```
 
 **Variants:** filled (`isMono: false`, e.g. `Icons_Dog`) = colorful. Mono (`isMono: true`, e.g. `Icons_Dog_M`) = clean line-art. Prefer mono (`_M`) variants for professional decks — they're cleaner and recolorable.
 
 **Sizing:** 36-48pt inline next to text, 72pt default, 72-144pt decorative hero.
 
-**Coloring:** Pass `color` hex to `insert_icon`. Do NOT use `shape.fill.setSolidColor()` — that sets shape background, not SVG paths. To recolor existing icons: use `edit_slide_xml` to modify SVG, inject `<style>.iconFill{fill:#HEX;}</style>` after opening `<svg>` tag.
+**Coloring:** Pass `color` hex to `insert_image`. Only works with SVG sources — errors on non-SVG. Do NOT use `shape.fill.setSolidColor()` — that sets shape background, not SVG paths.
 
-**Parallel operations:** When placing icons on multiple cards, search for ALL icons in parallel (multiple `search_icons` calls at once), then insert ALL icons in parallel (multiple `insert_icon` calls at once). This is significantly faster than sequential one-at-a-time operations.
+**Parallel operations:** When placing icons on multiple cards, search for ALL icons in parallel (multiple `search_fluent_icons` calls at once), then insert ALL icons in parallel (multiple `insert_image` calls at once). This is significantly faster than sequential one-at-a-time operations.
 
-**Retry with alternative keywords:** If `search_icons` returns no good matches, retry with synonyms or related concepts:
+**Retry with alternative keywords:** If `search_fluent_icons` returns no good matches, retry with synonyms or related concepts:
 - Abstract concepts → concrete objects: "innovation" → "lightbulb", "opinionated" → "compass", "security" → "shield"
 - Actions → objects: "assessment" → "clipboard", "collaboration" → "handshake", "engineering" → "wrench"
 - Compound concepts → simpler: "no lock-in" → "unlock", "faster delivery" → "rocket"

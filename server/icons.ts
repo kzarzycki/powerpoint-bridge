@@ -26,6 +26,7 @@ export interface IconSearchResult {
   isMono: boolean
   contentTier: string
   searchScore: number
+  svgUrl: string
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +222,7 @@ export async function searchIcons(query: string, top = 10, style?: 'regular' | '
         isMono: true,
         contentTier: 'free',
         searchScore: score,
+        svgUrl: buildSvgUrl(entry.snakeName, true),
       })
       results.push({
         id: nameToId(entry.name, false),
@@ -228,6 +230,7 @@ export async function searchIcons(query: string, top = 10, style?: 'regular' | '
         isMono: false,
         contentTier: 'free',
         searchScore: score,
+        svgUrl: buildSvgUrl(entry.snakeName, false),
       })
     }
     return results.slice(0, top)
@@ -239,6 +242,7 @@ export async function searchIcons(query: string, top = 10, style?: 'regular' | '
     isMono,
     contentTier: 'free',
     searchScore: score,
+    svgUrl: buildSvgUrl(entry.snakeName, isMono),
   }))
 }
 
@@ -246,14 +250,14 @@ export async function searchIcons(query: string, top = 10, style?: 'regular' | '
 // SVG fetch + recolor
 // ---------------------------------------------------------------------------
 
-function buildSvgUrl(snakeName: string, isMono: boolean): string {
+export function buildSvgUrl(snakeName: string, isMono: boolean): string {
   const dirName = snakeToTitle(snakeName)
   const style = isMono ? 'regular' : 'filled'
   const fileName = `ic_fluent_${snakeName}_${DEFAULT_SIZE}_${style}.svg`
   return `${CDN_BASE}/${encodeURIComponent(dirName)}/SVG/${fileName}`
 }
 
-function recolorSvg(svg: string, color: string): string {
+export function recolorSvg(svg: string, color: string): string {
   // Inject a CSS style block after the opening <svg> tag to override all fills
   const styleTag = `<style>.icon-color{fill:${color}}</style>`
   let result = svg.replace(/(<svg[^>]*>)/, `$1${styleTag}`)

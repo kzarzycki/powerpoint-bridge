@@ -198,11 +198,12 @@ describe('icons', () => {
       expect(results).toEqual([])
     })
 
-    it('includes contentTier and searchScore', async () => {
+    it('includes contentTier, searchScore, and svgUrl', async () => {
       setupManifestFetch()
       const results = await searchIcons('heart', 2)
       expect(results[0].contentTier).toBe('free')
       expect(results[0].searchScore).toBeGreaterThan(0)
+      expect(results[0].svgUrl).toMatch(/^https:\/\/raw\.githubusercontent\.com\/microsoft\/fluentui-system-icons/)
     })
 
     it('caches index after first load', async () => {
