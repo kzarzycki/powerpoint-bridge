@@ -285,3 +285,114 @@ export async function extractSlideXmlFromZip(base64: string): Promise<{ zip: JSZ
 export async function updateSlideXmlInZip(zip: JSZip, xmlString: string): Promise<string> {
   return await updateZipFiles(zip, { [SLIDE_XML_PATH]: xmlString })
 }
+
+// ---------------------------------------------------------------------------
+// Theme extraction from exported slide zip
+// ---------------------------------------------------------------------------
+
+export interface ThemeInfo {
+  name: string
+  colors: Record<string, string>
+  fonts: { major: string; minor: string }
+}
+
+export async function extractThemeFromZip(base64: string): Promise<ThemeInfo> {
+  const zip = await JSZip.loadAsync(base64, { base64: true })
+  // Find the theme file (usually ppt/theme/theme1.xml)
+  const themePath = Object.keys(zip.files).find((p) => p.startsWith('ppt/theme/') && p.endsWith('.xml'))
+  if (!themePath) throw new Error('No theme file found in zip')
+  const themeXml = await zip.file(themePath)!.async('string')
+  const doc = new DOMParser().parseFromString(themeXml, 'text/xml')
+
+  // Extract color scheme
+  const clrScheme = doc.getElementsByTagNameNS(NS_A, 'clrScheme')[0]
+  const colors: Record<string, string> = {}
+  if (clrScheme) {
+    for (let i = 0; i < clrScheme.childNodes.length; i++) {
+      const node = clrScheme.childNodes[i] as Element
+      if (node.nodeType !== 1) continue // skip text nodes
+      const tag = node.localName
+      // Color value is in the first child element's val attribute (srgbClr or sysClr)
+      const valElem = node.getElementsByTagNameNS(NS_A, 'srgbClr')[0] ?? node.getElementsByTagNameNS(NS_A, 'sysClr')[0]
+      if (valElem) {
+        colors[tag] = valElem.getAttribute('val') ?? valElem.getAttribute('lastClr') ?? ''
+      }
+    }
+  }
+
+  // Extract font scheme
+  const fontScheme = doc.getElementsByTagNameNS(NS_A, 'fontScheme')[0]
+  const majorLatin = fontScheme?.getElementsByTagNameNS(NS_A, 'majorFont')[0]?.getElementsByTagNameNS(NS_A, 'latin')[0]
+  const minorLatin = fontScheme?.getElementsByTagNameNS(NS_A, 'minorFont')[0]?.getElementsByTagNameNS(NS_A, 'latin')[0]
+
+  return {
+    name: clrScheme?.getAttribute('name') ?? 'Unknown',
+    colors,
+    fonts: {
+      major: majorLatin?.getAttribute('typeface') ?? '',
+      minor: minorLatin?.getAttribute('typeface') ?? '',
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Layout extraction from full presentation zip
+// ---------------------------------------------------------------------------
+
+const NS_RELS = 'http://schemas.openxmlformats.org/package/2006/relationships'
+const LAYOUT_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout'
+
+export interface LayoutInfo {
+  index: number
+  name: string
+  placeholders: string[]
+}
+
+export async function extractLayoutsFromZip(zip: JSZip): Promise<LayoutInfo[]> {
+  // Find the first slide master's rels to get layout order
+  const masterRelsPath = 'ppt/slideMasters/_rels/slideMaster1.xml.rels'
+  const masterRelsFile = zip.file(masterRelsPath)
+  if (!masterRelsFile) throw new Error('No slide master rels found')
+  const masterRelsXml = await masterRelsFile.async('string')
+  const relsDoc = new DOMParser().parseFromString(masterRelsXml, 'text/xml')
+
+  // Collect layout targets in document order (this determines layoutIndex)
+  const layoutTargets: string[] = []
+  const rels = relsDoc.getElementsByTagNameNS(NS_RELS, 'Relationship')
+  for (let i = 0; i < rels.length; i++) {
+    const rel = rels[i]!
+    if (rel.getAttribute('Type') === LAYOUT_TYPE) {
+      const target = rel.getAttribute('Target') ?? ''
+      // Target is relative like "../slideLayouts/slideLayout1.xml"
+      const resolved = target.replace('..', 'ppt')
+      layoutTargets.push(resolved)
+    }
+  }
+
+  // Parse each layout XML for name and placeholders
+  const layouts: LayoutInfo[] = []
+  for (let i = 0; i < layoutTargets.length; i++) {
+    const layoutFile = zip.file(layoutTargets[i]!)
+    if (!layoutFile) continue
+    const layoutXml = await layoutFile.async('string')
+    const doc = new DOMParser().parseFromString(layoutXml, 'text/xml')
+
+    // Name from <p:cSld name="...">
+    const cSld = doc.getElementsByTagNameNS(NS_P, 'cSld')[0]
+    const name = cSld?.getAttribute('name') ?? `Layout ${i}`
+
+    // Placeholders from <p:ph type="..." idx="...">
+    const placeholders: string[] = []
+    const phs = doc.getElementsByTagNameNS(NS_P, 'ph')
+    for (let j = 0; j < phs.length; j++) {
+      const ph = phs[j]!
+      const phType = ph.getAttribute('type') ?? 'body'
+      const phIdx = ph.getAttribute('idx')
+      placeholders.push(phIdx ? `${phType}[${phIdx}]` : phType)
+    }
+
+    layouts.push({ index: i, name, placeholders })
+  }
+
+  return layouts
+}
