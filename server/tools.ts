@@ -359,6 +359,8 @@ export function registerTools(
               }
               return filtered
             })
+          } else if (key === 'usedBySlides' && Array.isArray(layout[key]) && (layout[key] as unknown[]).length === 0) {
+            // Omit empty usedBySlides to reduce payload
           } else if (layout[key] !== undefined) {
             out[key] = layout[key]
           }

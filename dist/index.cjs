@@ -50039,6 +50039,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
               }
               return filtered;
             });
+          } else if (key === "usedBySlides" && Array.isArray(layout[key]) && layout[key].length === 0) {
           } else if (layout[key] !== void 0) {
             out[key] = layout[key];
           }
