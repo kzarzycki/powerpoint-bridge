@@ -21,7 +21,8 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 | Tool | Purpose | Key Parameters |
 |------|---------|---------------|
 | `list_presentations` | Discover connected presentations | — |
-| `list_slides` | Lightweight deck index (~5 tok/slide): slide count, IDs, shape counts, dimensions | `presentationId?` |
+| `inspect_deck` | Deck overview: slide list + theme (colors, fonts). Use as first call | `presentationId?` |
+| `inspect_layouts` | All slide layouts with names, indices (for `slides.add`), placeholders. `usedOnly` for fast mode | `usedOnly?`, `presentationId?` |
 | `inspect_slide` | Detailed shape inspector (~80 tok/shape): text, positions, fills | `slideRange`, `presentationId?` |
 | `scan_slide` | Lightweight shape scanner (~40 tok/shape): IDs, types, positions | `slideRange`, `presentationId?` |
 | `screenshot_slide` | Capture one slide as PNG (~1000 tok) | `slideIndex`, `width?` (default 720), `presentationId?` |
@@ -44,7 +45,7 @@ When asked to enable or configure PowerPoint MCP in a project — follow the [se
 
 `presentationId` is required only when multiple presentations are connected. Get it from `list_presentations`.
 
-All positioning values are in **points** (1 pt = 1/72 inch). **Always read `slideWidth` and `slideHeight` from `list_slides` or `inspect_slide` response** — never assume 960 × 540. Common sizes: 960×540 (standard 16:9), 1440×810 (widescreen), 960×720 (4:3).
+All positioning values are in **points** (1 pt = 1/72 inch). **Always read `slideWidth` and `slideHeight` from `inspect_deck` or `inspect_slide` response** — never assume 960 × 540. Common sizes: 960×540 (standard 16:9), 1440×810 (widescreen), 960×720 (4:3).
 
 **Slide numbering**: Users refer to slides by 1-based number ("slide 3"), but all tools use 0-based indices. When a user says "slide 3", use `slideIndex: 2`. When they say "after slide 2", use `insertAfter: 1`.
 
@@ -52,14 +53,14 @@ All positioning values are in **points** (1 pt = 1/72 inch). **Always read `slid
 
 | Tool | Scope | ~Cost | When to use | When NOT to use |
 |------|-------|-------|-------------|-----------------|
-| `list_slides` | All slides | ~5 tok/slide | First call — learn deck structure, slide count, dimensions | Need shape details |
+| `inspect_deck` | All slides | ~5 tok/slide | First call — learn deck structure, slide count, dimensions | Need shape details |
 | `scan_slide` | 1+ slides | ~40 tok/shape | Need shape layout/positions for editing | Need text content or fills |
 | `inspect_slide` | 1+ slides | ~80 tok/shape | Need full details (text, positions, fills) | Just need positions — use scan_slide |
 | `screenshot_slide` | 1 slide | ~1000 tok | Visual verification after changes | Looping over all slides — use preview_deck |
 | `preview_deck` text-only | All slides | ~35 tok/slide | Content audit, find which slide has what | Need shape positions or fills |
 | `preview_deck` + images | All slides | ~900 tok/slide | Visual audit of entire deck | Just need one slide — use screenshot_slide |
 
-**Example**: a 20-slide deck: `list_slides` ≈ 100 tokens, `preview_deck` text-only ≈ 700 tokens, `preview_deck` with images ≈ 18000 tokens. Always prefer the lightest option.
+**Example**: a 20-slide deck: `inspect_deck` ≈ 100 tokens, `preview_deck` text-only ≈ 700 tokens, `preview_deck` with images ≈ 18000 tokens. Always prefer the lightest option.
 
 ### Tool Return Values
 
@@ -99,7 +100,7 @@ Key return formats to know:
 Before editing, determine the deck type. This determines the entire approach.
 
 ### Case 1: Blank Deck
-**Detection:** `list_slides` shows only default slides, `inspect_slide` shows no custom content or colors.
+**Detection:** `inspect_deck` shows only default slides, `inspect_slide` shows no custom content or colors.
 
 Use `edit_slide_master` FIRST to set up a complete theme before adding any slides. Do ALL of the following in a single `edit_slide_master` call:
 1. **Theme colors** — set the full `a:clrScheme`: dk1, dk2, lt1, lt2, and all six accents. Pick a cohesive palette suited to the topic and audience.
@@ -111,7 +112,7 @@ Use `edit_slide_master` FIRST to set up a complete theme before adding any slide
 **Palette diversity rule:** Do NOT default to dark backgrounds. Light, warm, pastel, earthy, vibrant, and muted palettes are all valid choices. Match the tone of the content.
 
 ### Case 2: Custom-Styled Deck (Default Master)
-**Detection:** `list_slides` shows default theme but `inspect_slide` reveals custom colors, fonts, and shapes on existing slides.
+**Detection:** `inspect_deck` shows default theme but `inspect_slide` reveals custom colors, fonts, and shapes on existing slides.
 
 Do NOT create or modify the slide master. The existing slides ARE the design system.
 - Before adding new slides, READ existing slides to extract visual style: background colors, font names, sizes, text colors, accent colors, shape styles.
@@ -119,7 +120,7 @@ Do NOT create or modify the slide master. The existing slides ARE the design sys
 - Apply colors and fonts explicitly per-slide to match existing slides, since the master has no custom styles to inherit from.
 
 ### Case 3: Template or Existing Presentation
-**Detection:** `list_slides` shows a non-default theme.
+**Detection:** `inspect_deck` shows a non-default theme.
 
 Default to PRESERVING the existing theme. New slides and additions should blend with existing colors, fonts, and layouts.
 
@@ -158,7 +159,7 @@ For multi-step work, check in at key milestones. Show interim outputs and confir
 ## Workflow
 
 1. **Discover**: `list_presentations` — find connected presentations
-2. **Audit**: Check existing state — slide count, available layouts, which slides already have content. Use `preview_deck` for a visual overview, or `list_slides` then `inspect_slide` per slide. This is essential for resuming partial builds or modifying existing decks.
+2. **Audit**: Check existing state — slide count, available layouts, which slides already have content. Use `preview_deck` for a visual overview, or `inspect_deck` then `inspect_slide` per slide. This is essential for resuming partial builds or modifying existing decks.
 3. **Find**: `search_text` — grep for slides. Searches shapes, tables, and speaker notes. Use `context: "none"` for just slide indices, `"shape"` (default) for matching shapes, or `"slide"` for full slide context with all shapes. Supports regex.
 4. **Detect deck type**: Determine blank / custom-styled / template (see above) — this decides whether to apply a theme first.
 4. **See**: `screenshot_slide` — visually inspect specific slides
