@@ -1,12 +1,8 @@
 {
   "mcpServers": {
     "powerpoint-bridge": {
-      "command": "node",
-      "args": [
-        "${CLAUDE_PLUGIN_ROOT}/dist/index.cjs",
-        "--stdio",
-        "--bridge"
-      ]
+      "type": "http",
+      "url": "http://localhost:3001/mcp"
     }
   }
 }
