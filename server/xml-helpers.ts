@@ -342,10 +342,31 @@ export async function extractThemeFromZip(base64: string): Promise<ThemeInfo> {
 const NS_RELS = 'http://schemas.openxmlformats.org/package/2006/relationships'
 const LAYOUT_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout'
 
+// TODO: consider reading <p:tag> elements for agent-specific metadata (agent:* prefix)
+
+const EMU_PER_PT = 12700
+function emuToPoints(emu: number): number {
+  return Math.round((emu / EMU_PER_PT) * 100) / 100
+}
+
+export interface PlaceholderInfo {
+  type: string // <p:ph type="...">, default "obj" per OOXML spec
+  idx?: number // <p:ph idx="...">
+  name?: string // <p:cNvPr name="..."> — shape name, visible in Selection Pane
+  description?: string // <p:cNvPr descr="..."> — alt text, visible as tooltip
+  sz?: string // <p:ph sz="..."> — "full"/"half"/"quarter"
+  left?: number // points, from <a:xfrm>; undefined = inherited from master
+  top?: number
+  width?: number
+  height?: number
+}
+
 export interface LayoutInfo {
   index: number
   name: string
-  placeholders: string[]
+  type?: string // <p:sldLayout type="...">, e.g. "blank", "twoObj", "secHead"
+  placeholders: PlaceholderInfo[]
+  usedBySlides?: number[]
 }
 
 export async function extractLayoutsFromZip(zip: JSZip): Promise<LayoutInfo[]> {
@@ -369,7 +390,7 @@ export async function extractLayoutsFromZip(zip: JSZip): Promise<LayoutInfo[]> {
     }
   }
 
-  // Parse each layout XML for name and placeholders
+  // Parse each layout XML for name, type, and placeholders
   const layouts: LayoutInfo[] = []
   for (let i = 0; i < layoutTargets.length; i++) {
     const layoutFile = zip.file(layoutTargets[i]!)
@@ -377,21 +398,71 @@ export async function extractLayoutsFromZip(zip: JSZip): Promise<LayoutInfo[]> {
     const layoutXml = await layoutFile.async('string')
     const doc = new DOMParser().parseFromString(layoutXml, 'text/xml')
 
+    // Layout type from <p:sldLayout type="...">
+    const sldLayout = doc.getElementsByTagNameNS(NS_P, 'sldLayout')[0]
+    const layoutType = sldLayout?.getAttribute('type') ?? undefined
+
     // Name from <p:cSld name="...">
     const cSld = doc.getElementsByTagNameNS(NS_P, 'cSld')[0]
     const name = cSld?.getAttribute('name') ?? `Layout ${i}`
 
-    // Placeholders from <p:ph type="..." idx="...">
-    const placeholders: string[] = []
-    const phs = doc.getElementsByTagNameNS(NS_P, 'ph')
-    for (let j = 0; j < phs.length; j++) {
-      const ph = phs[j]!
-      const phType = ph.getAttribute('type') ?? 'body'
-      const phIdx = ph.getAttribute('idx')
-      placeholders.push(phIdx ? `${phType}[${phIdx}]` : phType)
+    // Iterate shapes top-down, extract placeholder metadata
+    const placeholders: PlaceholderInfo[] = []
+    const shapes = doc.getElementsByTagNameNS(NS_P, 'sp')
+    for (let j = 0; j < shapes.length; j++) {
+      const shape = shapes[j]!
+      const nvSpPr = shape.getElementsByTagNameNS(NS_P, 'nvSpPr')[0]
+      if (!nvSpPr) continue
+      const nvPr = nvSpPr.getElementsByTagNameNS(NS_P, 'nvPr')[0]
+      if (!nvPr) continue
+      const ph = nvPr.getElementsByTagNameNS(NS_P, 'ph')[0]
+      if (!ph) continue // not a placeholder shape
+
+      const phType = ph.getAttribute('type') || 'obj'
+
+      // Skip utility placeholders — auto-filled by PowerPoint, not agent-relevant
+      if (phType === 'sldNum' || phType === 'ftr' || phType === 'dt' || phType === 'hdr') continue
+
+      const info: PlaceholderInfo = { type: phType }
+
+      const idxStr = ph.getAttribute('idx')
+      if (idxStr) info.idx = Number.parseInt(idxStr, 10)
+      const szStr = ph.getAttribute('sz')
+      if (szStr) info.sz = szStr
+
+      // Shape name and description from <p:cNvPr>
+      const cNvPr = nvSpPr.getElementsByTagNameNS(NS_P, 'cNvPr')[0]
+      if (cNvPr) {
+        const shapeName = cNvPr.getAttribute('name')
+        if (shapeName) info.name = shapeName
+        const descr = cNvPr.getAttribute('descr')
+        if (descr) info.description = descr
+      }
+
+      // Position/size from <p:spPr><a:xfrm>
+      const spPr = shape.getElementsByTagNameNS(NS_P, 'spPr')[0]
+      const xfrm = spPr?.getElementsByTagNameNS(NS_A, 'xfrm')[0]
+      if (xfrm) {
+        const off = xfrm.getElementsByTagNameNS(NS_A, 'off')[0]
+        const ext = xfrm.getElementsByTagNameNS(NS_A, 'ext')[0]
+        if (off) {
+          const x = off.getAttribute('x')
+          const y = off.getAttribute('y')
+          if (x) info.left = emuToPoints(Number.parseInt(x, 10))
+          if (y) info.top = emuToPoints(Number.parseInt(y, 10))
+        }
+        if (ext) {
+          const cx = ext.getAttribute('cx')
+          const cy = ext.getAttribute('cy')
+          if (cx) info.width = emuToPoints(Number.parseInt(cx, 10))
+          if (cy) info.height = emuToPoints(Number.parseInt(cy, 10))
+        }
+      }
+
+      placeholders.push(info)
     }
 
-    layouts.push({ index: i, name, placeholders })
+    layouts.push({ index: i, name, ...(layoutType ? { type: layoutType } : {}), placeholders })
   }
 
   return layouts

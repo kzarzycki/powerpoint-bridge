@@ -49721,6 +49721,10 @@ async function extractThemeFromZip(base643) {
 }
 var NS_RELS = "http://schemas.openxmlformats.org/package/2006/relationships";
 var LAYOUT_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout";
+var EMU_PER_PT = 12700;
+function emuToPoints(emu) {
+  return Math.round(emu / EMU_PER_PT * 100) / 100;
+}
 async function extractLayoutsFromZip(zip) {
   const masterRelsPath = "ppt/slideMasters/_rels/slideMaster1.xml.rels";
   const masterRelsFile = zip.file(masterRelsPath);
@@ -49743,17 +49747,55 @@ async function extractLayoutsFromZip(zip) {
     if (!layoutFile) continue;
     const layoutXml = await layoutFile.async("string");
     const doc = new import_xmldom.DOMParser().parseFromString(layoutXml, "text/xml");
+    const sldLayout = doc.getElementsByTagNameNS(NS_P, "sldLayout")[0];
+    const layoutType = sldLayout?.getAttribute("type") ?? void 0;
     const cSld = doc.getElementsByTagNameNS(NS_P, "cSld")[0];
     const name = cSld?.getAttribute("name") ?? `Layout ${i}`;
     const placeholders = [];
-    const phs = doc.getElementsByTagNameNS(NS_P, "ph");
-    for (let j = 0; j < phs.length; j++) {
-      const ph = phs[j];
-      const phType = ph.getAttribute("type") ?? "body";
-      const phIdx = ph.getAttribute("idx");
-      placeholders.push(phIdx ? `${phType}[${phIdx}]` : phType);
+    const shapes = doc.getElementsByTagNameNS(NS_P, "sp");
+    for (let j = 0; j < shapes.length; j++) {
+      const shape = shapes[j];
+      const nvSpPr = shape.getElementsByTagNameNS(NS_P, "nvSpPr")[0];
+      if (!nvSpPr) continue;
+      const nvPr = nvSpPr.getElementsByTagNameNS(NS_P, "nvPr")[0];
+      if (!nvPr) continue;
+      const ph = nvPr.getElementsByTagNameNS(NS_P, "ph")[0];
+      if (!ph) continue;
+      const phType = ph.getAttribute("type") || "obj";
+      if (phType === "sldNum" || phType === "ftr" || phType === "dt" || phType === "hdr") continue;
+      const info = { type: phType };
+      const idxStr = ph.getAttribute("idx");
+      if (idxStr) info.idx = Number.parseInt(idxStr, 10);
+      const szStr = ph.getAttribute("sz");
+      if (szStr) info.sz = szStr;
+      const cNvPr = nvSpPr.getElementsByTagNameNS(NS_P, "cNvPr")[0];
+      if (cNvPr) {
+        const shapeName = cNvPr.getAttribute("name");
+        if (shapeName) info.name = shapeName;
+        const descr = cNvPr.getAttribute("descr");
+        if (descr) info.description = descr;
+      }
+      const spPr = shape.getElementsByTagNameNS(NS_P, "spPr")[0];
+      const xfrm = spPr?.getElementsByTagNameNS(NS_A, "xfrm")[0];
+      if (xfrm) {
+        const off = xfrm.getElementsByTagNameNS(NS_A, "off")[0];
+        const ext = xfrm.getElementsByTagNameNS(NS_A, "ext")[0];
+        if (off) {
+          const x = off.getAttribute("x");
+          const y = off.getAttribute("y");
+          if (x) info.left = emuToPoints(Number.parseInt(x, 10));
+          if (y) info.top = emuToPoints(Number.parseInt(y, 10));
+        }
+        if (ext) {
+          const cx = ext.getAttribute("cx");
+          const cy = ext.getAttribute("cy");
+          if (cx) info.width = emuToPoints(Number.parseInt(cx, 10));
+          if (cy) info.height = emuToPoints(Number.parseInt(cy, 10));
+        }
+      }
+      placeholders.push(info);
     }
-    layouts.push({ index: i, name, placeholders });
+    layouts.push({ index: i, name, ...layoutType ? { type: layoutType } : {}, placeholders });
   }
   return layouts;
 }
@@ -49891,6 +49933,32 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
       };
     }
   );
+  async function getLayoutUsage(connPool, ws) {
+    const code = `
+      var slides = context.presentation.slides;
+      slides.load("items");
+      await context.sync();
+      for (var i = 0; i < slides.items.length; i++) {
+        slides.items[i].layout.load("name,id");
+      }
+      await context.sync();
+      var seen = {};
+      var layouts = [];
+      for (var i = 0; i < slides.items.length; i++) {
+        var l = slides.items[i].layout;
+        if (!seen[l.id]) {
+          seen[l.id] = true;
+          layouts.push({ name: l.name, id: l.id, usedBySlides: [i] });
+        } else {
+          for (var j = 0; j < layouts.length; j++) {
+            if (layouts[j].id === l.id) { layouts[j].usedBySlides.push(i); break; }
+          }
+        }
+      }
+      return layouts;
+    `;
+    return await connPool.sendCommand("executeCode", { code }, ws);
+  }
   server.tool(
     "inspect_deck",
     "Deck overview: slide dimensions, theme (colors + fonts), and all slides with index, ID, and shape count. Use as the first call to understand deck structure. Theme is cached after the first call. For shape details, follow up with scan_slide or inspect_slide on specific slides. For available layouts, use inspect_layouts.",
@@ -49910,11 +49978,12 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
           for (var i = 0; i < slides.items.length; i++) {
             var slide = slides.items[i];
             slide.shapes.load("items");
+            slide.layout.load("name");
           }
           await context.sync();
           for (var i = 0; i < slides.items.length; i++) {
             var slide = slides.items[i];
-            output.push({ index: i, id: slide.id, shapeCount: slide.shapes.items.length });
+            output.push({ index: i, id: slide.id, layout: slide.layout.name, shapeCount: slide.shapes.items.length });
           }
           return { slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `;
@@ -49941,48 +50010,61 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
   );
   server.tool(
     "inspect_layouts",
-    "Returns slide layouts available in the presentation with names, indices (for slides.add({ layoutIndex })), and placeholder types. By default reads all layouts from OOXML (complete list, requires file access \u2014 may take a moment on first call for cloud files). Set usedOnly to return only layouts assigned to existing slides (fast, Office.js only, no file access).",
+    "Returns slide layouts with names, OOXML type (e.g. blank, twoObj, secHead), indices (for slides.add({ layoutIndex })), and detailed placeholders. Use `fields` to control which data is returned. By default reads all layouts from OOXML (complete list, requires file access \u2014 may take a moment on first call for cloud files). Set usedOnly to return only layouts assigned to existing slides (fast, Office.js only, no file access).",
     {
+      fields: external_exports3.string().optional().describe(
+        'Comma-separated layout fields to include. Placeholders sub-fields in parens. Default: "index,name,type,usedBySlides,placeholders(type,idx,name)". All placeholder fields: type,idx,name,description,sz,left,top,width,height.'
+      ),
       usedOnly: external_exports3.boolean().optional().describe(
         "If true, return only layouts currently assigned to slides (fast, Office.js only). Default: false (all layouts from OOXML)."
       ),
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
-    async ({ usedOnly, presentationId }) => {
+    async ({ fields, usedOnly, presentationId }) => {
+      const DEFAULT_FIELDS = "index,name,type,usedBySlides,placeholders(type,idx,name)";
+      const fieldSpec = fields ?? DEFAULT_FIELDS;
+      const phMatch = fieldSpec.match(/placeholders\(([^)]+)\)/);
+      const phFields = phMatch ? new Set(phMatch[1].split(",").map((f) => f.trim())) : null;
+      const layoutFields = new Set(
+        fieldSpec.replace(/placeholders\([^)]*\)/, "placeholders").split(",").map((f) => f.trim())
+      );
+      function filterLayout(layout) {
+        const out = {};
+        for (const key of layoutFields) {
+          if (key === "placeholders" && phFields && Array.isArray(layout.placeholders)) {
+            out.placeholders = layout.placeholders.map((ph) => {
+              const filtered = {};
+              for (const f of phFields) {
+                if (ph[f] !== void 0) filtered[f] = ph[f];
+              }
+              return filtered;
+            });
+          } else if (layout[key] !== void 0) {
+            out[key] = layout[key];
+          }
+        }
+        return out;
+      }
       try {
         const target = pool2.resolveTarget(presentationId);
         if (usedOnly) {
-          const code = `
-            var slides = context.presentation.slides;
-            slides.load("items");
-            await context.sync();
-            for (var i = 0; i < slides.items.length; i++) {
-              slides.items[i].layout.load("name,id");
-            }
-            await context.sync();
-            var seen = {};
-            var layouts = [];
-            for (var i = 0; i < slides.items.length; i++) {
-              var l = slides.items[i].layout;
-              if (!seen[l.id]) {
-                seen[l.id] = true;
-                layouts.push({ name: l.name, id: l.id, usedBySlides: [i] });
-              } else {
-                for (var j = 0; j < layouts.length; j++) {
-                  if (layouts[j].id === l.id) { layouts[j].usedBySlides.push(i); break; }
-                }
-              }
-            }
-            return { layouts: layouts, usedOnly: true };
-          `;
-          const result = await pool2.sendCommand("executeCode", { code }, target.ws);
-          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+          const layouts2 = await getLayoutUsage(pool2, target.ws);
+          return { content: [{ type: "text", text: JSON.stringify({ layouts: layouts2, usedOnly: true }) }] };
         }
         const localPath = await getLocalCopyPath(pool2, target);
         const fileData = (0, import_node_fs2.readFileSync)(localPath);
         const zip = await import_jszip2.default.loadAsync(fileData);
         const layouts = await extractLayoutsFromZip(zip);
-        return { content: [{ type: "text", text: JSON.stringify({ layouts }, null, 2) }] };
+        try {
+          const usage = await getLayoutUsage(pool2, target.ws);
+          const usageByName = new Map(usage.map((u) => [u.name, u.usedBySlides]));
+          for (const layout of layouts) {
+            layout.usedBySlides = usageByName.get(layout.name) ?? [];
+          }
+        } catch {
+        }
+        const filtered = layouts.map((l) => filterLayout(l));
+        return { content: [{ type: "text", text: JSON.stringify({ layouts: filtered }) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
