@@ -81,7 +81,7 @@ describe('MCP Tools', () => {
     pool = new ConnectionPool(100)
   })
 
-  it('lists all 19 tools', async () => {
+  it('lists all 23 tools', async () => {
     const { client } = await setupMcpClient(pool)
     const result = await client.listTools()
     const names = result.tools.map((t) => t.name).sort()
@@ -96,9 +96,10 @@ describe('MCP Tools', () => {
       'format_shapes',
       'get_local_copy',
       'insert_image',
+      'inspect_deck',
+      'inspect_layouts',
       'inspect_slide',
       'list_presentations',
-      'list_slides',
       'preview_deck',
       'read_slide_text',
       'read_slide_xml',
@@ -138,10 +139,10 @@ describe('MCP Tools', () => {
     })
   })
 
-  describe('list_slides', () => {
+  describe('inspect_deck', () => {
     it('returns error with no connections', async () => {
       const { client } = await setupMcpClient(pool)
-      const result = await client.callTool({ name: 'list_slides', arguments: {} })
+      const result = await client.callTool({ name: 'inspect_deck', arguments: {} })
       expect(result.isError).toBe(true)
       const text = (result.content as Array<{ text: string }>)[0].text
       expect(text).toContain('No presentations connected')

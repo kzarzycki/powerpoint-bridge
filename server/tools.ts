@@ -3,16 +3,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { DOMParser } from '@xmldom/xmldom'
+import JSZip from 'jszip'
 import { z } from 'zod'
 import type { ConnectionPool } from './bridge.ts'
 import { buildChartRelationship, buildChartXml, buildGraphicFrame, resolveChartPosition } from './chart-builder.ts'
 import { recolorSvg, searchIcons } from './icons.ts'
+import type { ThemeInfo } from './xml-helpers.ts'
 import {
   autoRegisterContentTypes,
   escapeXml,
   exportSlide,
+  extractLayoutsFromZip,
   extractParagraphs,
   extractSlideXmlFromZip,
+  extractThemeFromZip,
   extractZipFiles,
   findShapeById,
   listZipPaths,
@@ -32,6 +36,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export const localCopyCache = new Map<string, { localPath: string; revision: number }>()
+export const themeCache = new Map<string, ThemeInfo>()
 
 // ---------------------------------------------------------------------------
 // Concurrent access warning helper
@@ -106,6 +111,90 @@ export function registerTools(
   getSessionId: () => string | undefined,
   getActiveSessionCount: () => number,
 ): void {
+  // Helper: get a local file path for a presentation (reused by get_local_copy and inspect_layouts)
+  async function getLocalCopyPath(
+    connPool: ConnectionPool,
+    target: { filePath: string | null; presentationId: string; ws: import('ws').WebSocket },
+  ): Promise<string> {
+    const filePath = target.filePath
+
+    // Local file — already on disk
+    if (filePath && !filePath.startsWith('http')) {
+      if (!existsSync(filePath)) throw new Error(`Local file not found: ${filePath}`)
+      return filePath
+    }
+
+    // Cloud file — check revision for cache validity
+    const revCode = `
+      var p = context.presentation.properties;
+      p.load("revisionNumber");
+      await context.sync();
+      return p.revisionNumber;
+    `
+    const currentRevision = (await connPool.sendCommand('executeCode', { code: revCode }, target.ws)) as number
+
+    const cached = localCopyCache.get(target.presentationId)
+    if (cached && cached.revision === currentRevision && existsSync(cached.localPath)) {
+      return cached.localPath
+    }
+
+    // Export fresh copy via Common API getFileAsync
+    const exportCode = `
+      return new Promise(function(resolve, reject) {
+        Office.context.document.getFileAsync(Office.FileType.Compressed, { sliceSize: 4194304 }, function(result) {
+          if (result.status !== Office.AsyncResultStatus.Succeeded) {
+            reject(new Error(result.error.message));
+            return;
+          }
+          var file = result.value;
+          var sliceCount = file.sliceCount;
+          var sliceData = [];
+          var totalSize = 0;
+          function getNextSlice(index) {
+            if (index >= sliceCount) {
+              file.closeAsync();
+              var combined = new Uint8Array(totalSize);
+              var offset = 0;
+              for (var i = 0; i < sliceData.length; i++) {
+                var arr = new Uint8Array(sliceData[i]);
+                combined.set(arr, offset);
+                offset += arr.length;
+              }
+              var binary = '';
+              var chunk = 8192;
+              for (var j = 0; j < combined.length; j += chunk) {
+                binary += String.fromCharCode.apply(null, combined.subarray(j, Math.min(j + chunk, combined.length)));
+              }
+              resolve(btoa(binary));
+              return;
+            }
+            file.getSliceAsync(index, function(sliceResult) {
+              if (sliceResult.status !== Office.AsyncResultStatus.Succeeded) {
+                file.closeAsync();
+                reject(new Error(sliceResult.error.message));
+                return;
+              }
+              sliceData.push(sliceResult.value.data);
+              totalSize += sliceResult.value.data.length;
+              getNextSlice(index + 1);
+            });
+          }
+          getNextSlice(0);
+        });
+      });
+    `
+    const base64 = (await connPool.sendCommand('executeCode', { code: exportCode }, target.ws, 120_000)) as string
+
+    const filename = filePath
+      ? decodeURIComponent(filePath.split('/').pop() || 'presentation.pptx')
+      : 'presentation.pptx'
+    const dest = join(tmpdir(), `pptbridge-${Date.now()}-${filename}`)
+    writeFileSync(dest, Buffer.from(base64, 'base64'))
+
+    localCopyCache.set(target.presentationId, { localPath: dest, revision: currentRevision })
+    return dest
+  }
+
   // --- Tool: list_presentations ---
   server.tool(
     'list_presentations',
@@ -133,10 +222,43 @@ export function registerTools(
     },
   )
 
-  // --- Tool: list_slides ---
+  // Helper: enumerate layout usage from existing slides via Office.js
+  interface LayoutUsage {
+    name: string
+    id: string
+    usedBySlides: number[]
+  }
+  async function getLayoutUsage(connPool: ConnectionPool, ws: import('ws').WebSocket): Promise<LayoutUsage[]> {
+    const code = `
+      var slides = context.presentation.slides;
+      slides.load("items");
+      await context.sync();
+      for (var i = 0; i < slides.items.length; i++) {
+        slides.items[i].layout.load("name,id");
+      }
+      await context.sync();
+      var seen = {};
+      var layouts = [];
+      for (var i = 0; i < slides.items.length; i++) {
+        var l = slides.items[i].layout;
+        if (!seen[l.id]) {
+          seen[l.id] = true;
+          layouts.push({ name: l.name, id: l.id, usedBySlides: [i] });
+        } else {
+          for (var j = 0; j < layouts.length; j++) {
+            if (layouts[j].id === l.id) { layouts[j].usedBySlides.push(i); break; }
+          }
+        }
+      }
+      return layouts;
+    `
+    return (await connPool.sendCommand('executeCode', { code }, ws)) as LayoutUsage[]
+  }
+
+  // --- Tool: inspect_deck ---
   server.tool(
-    'list_slides',
-    'Lightweight deck index (~5 tokens/slide): returns slide dimensions (slideWidth, slideHeight) and all slides with index, ID, and shape count. Use as the first call to understand deck structure. For shape details, follow up with scan_slide or inspect_slide on specific slides.',
+    'inspect_deck',
+    'Deck overview: slide dimensions, theme (colors + fonts), and all slides with index, ID, and shape count. Use as the first call to understand deck structure. Theme is cached after the first call. For shape details, follow up with scan_slide or inspect_slide on specific slides. For available layouts, use inspect_layouts.',
     {
       presentationId: z
         .string()
@@ -156,19 +278,124 @@ export function registerTools(
           for (var i = 0; i < slides.items.length; i++) {
             var slide = slides.items[i];
             slide.shapes.load("items");
+            slide.layout.load("name");
           }
           await context.sync();
           for (var i = 0; i < slides.items.length; i++) {
             var slide = slides.items[i];
-            output.push({ index: i, id: slide.id, shapeCount: slide.shapes.items.length });
+            output.push({ index: i, id: slide.id, layout: slide.layout.name, shapeCount: slide.shapes.items.length });
           }
           return { slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `
         const target = pool.resolveTarget(presentationId)
         const result = await pool.sendCommand('executeCode', { code }, target.ws)
+
+        // Extract theme (cached per presentation)
+        let theme = themeCache.get(target.presentationId)
+        if (!theme) {
+          try {
+            const exported = await exportSlide(pool, 0, target.ws)
+            theme = await extractThemeFromZip(exported.base64)
+            themeCache.set(target.presentationId, theme)
+          } catch {
+            // Theme extraction is best-effort — don't fail the whole call
+          }
+        }
+
+        const output = { ...(result as Record<string, unknown>), ...(theme ? { theme } : {}) }
         const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
-        const text = JSON.stringify(result, null, 2) + (warning ?? '')
+        const text = JSON.stringify(output) + (warning ?? '')
         return { content: [{ type: 'text' as const, text }] }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
+      }
+    },
+  )
+
+  // --- Tool: inspect_layouts ---
+  server.tool(
+    'inspect_layouts',
+    'Returns slide layouts with names, OOXML type (e.g. blank, twoObj, secHead), indices (for slides.add({ layoutIndex })), and detailed placeholders. Use `fields` to control which data is returned. By default reads all layouts from OOXML (complete list, requires file access — may take a moment on first call for cloud files). Set usedOnly to return only layouts assigned to existing slides (fast, Office.js only, no file access).',
+    {
+      fields: z
+        .string()
+        .optional()
+        .describe(
+          'Comma-separated layout fields to include. Placeholders sub-fields in parens. Default: "index,name,type,usedBySlides,placeholders(type,idx,name)". All placeholder fields: type,idx,name,description,sz,left,top,width,height.',
+        ),
+      usedOnly: z
+        .boolean()
+        .optional()
+        .describe(
+          'If true, return only layouts currently assigned to slides (fast, Office.js only). Default: false (all layouts from OOXML).',
+        ),
+      presentationId: z
+        .string()
+        .optional()
+        .describe('Target presentation ID from list_presentations. Optional when only one presentation is connected.'),
+    },
+    async ({ fields, usedOnly, presentationId }) => {
+      // Parse fields spec: "index,name,placeholders(type,idx,name)" → { layout: Set, placeholder: Set }
+      const DEFAULT_FIELDS = 'index,name,type,usedBySlides,placeholders(type,idx,name)'
+      const fieldSpec = fields ?? DEFAULT_FIELDS
+      const phMatch = fieldSpec.match(/placeholders\(([^)]+)\)/)
+      const phFields = phMatch ? new Set(phMatch[1]!.split(',').map((f) => f.trim())) : null
+      const layoutFields = new Set(
+        fieldSpec
+          .replace(/placeholders\([^)]*\)/, 'placeholders')
+          .split(',')
+          .map((f) => f.trim()),
+      )
+
+      function filterLayout(layout: Record<string, unknown>): Record<string, unknown> {
+        const out: Record<string, unknown> = {}
+        for (const key of layoutFields) {
+          if (key === 'placeholders' && phFields && Array.isArray(layout.placeholders)) {
+            out.placeholders = (layout.placeholders as Record<string, unknown>[]).map((ph) => {
+              const filtered: Record<string, unknown> = {}
+              for (const f of phFields) {
+                if (ph[f] !== undefined) filtered[f] = ph[f]
+              }
+              return filtered
+            })
+          } else if (key === 'usedBySlides' && Array.isArray(layout[key]) && (layout[key] as unknown[]).length === 0) {
+            // Omit empty usedBySlides to reduce payload
+          } else if (layout[key] !== undefined) {
+            out[key] = layout[key]
+          }
+        }
+        return out
+      }
+
+      try {
+        const target = pool.resolveTarget(presentationId)
+
+        if (usedOnly) {
+          // Fast path: just Office.js enumeration
+          const layouts = await getLayoutUsage(pool, target.ws)
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ layouts, usedOnly: true }) }] }
+        }
+
+        // Full path: read all layouts from OOXML via local file
+        const localPath = await getLocalCopyPath(pool, target)
+        const fileData = readFileSync(localPath)
+        const zip = await JSZip.loadAsync(fileData)
+        const layouts = await extractLayoutsFromZip(zip)
+
+        // Enrich with usedBySlides from Office.js (best-effort)
+        try {
+          const usage = await getLayoutUsage(pool, target.ws)
+          const usageByName = new Map(usage.map((u) => [u.name, u.usedBySlides]))
+          for (const layout of layouts) {
+            layout.usedBySlides = usageByName.get(layout.name) ?? []
+          }
+        } catch {
+          // If Office.js enumeration fails, return layouts without usage info
+        }
+
+        const filtered = layouts.map((l) => filterLayout(l as unknown as Record<string, unknown>))
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ layouts: filtered }) }] }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }
@@ -732,107 +959,14 @@ export function registerTools(
     async ({ presentationId }) => {
       try {
         const target = pool.resolveTarget(presentationId)
-        const filePath = target.filePath
-
-        // Local file — already on disk
-        if (filePath && !filePath.startsWith('http')) {
-          if (!existsSync(filePath)) {
-            return {
-              content: [{ type: 'text' as const, text: `Error: Local file not found: ${filePath}` }],
-              isError: true,
-            }
-          }
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ localPath: filePath, source: 'local' }) }],
-          }
-        }
-
-        // Cloud file — check revision for cache validity
-        const revCode = `
-          var p = context.presentation.properties;
-          p.load("revisionNumber");
-          await context.sync();
-          return p.revisionNumber;
-        `
-        const currentRevision = (await pool.sendCommand('executeCode', { code: revCode }, target.ws)) as number
-
+        const cachedBefore = localCopyCache.get(target.presentationId)?.localPath
+        const localPath = await getLocalCopyPath(pool, target)
+        const isLocal = target.filePath && !target.filePath.startsWith('http')
         const cached = localCopyCache.get(target.presentationId)
-        if (cached && cached.revision === currentRevision && existsSync(cached.localPath)) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify({ localPath: cached.localPath, source: 'cached', revision: currentRevision }),
-              },
-            ],
-          }
-        }
-
-        // Export fresh copy via Common API getFileAsync.
-        // NOTE: Presentation.exportAsBase64() doesn't exist. SlideCollection.exportAsBase64Presentation()
-        // exists (API 1.10) but crashes PowerPoint on macOS 16.100 (SIGABRT in OLEAutomation).
-        const exportCode = `
-          return new Promise(function(resolve, reject) {
-            Office.context.document.getFileAsync(Office.FileType.Compressed, { sliceSize: 4194304 }, function(result) {
-              if (result.status !== Office.AsyncResultStatus.Succeeded) {
-                reject(new Error(result.error.message));
-                return;
-              }
-              var file = result.value;
-              var sliceCount = file.sliceCount;
-              var sliceData = [];
-              var totalSize = 0;
-              function getNextSlice(index) {
-                if (index >= sliceCount) {
-                  file.closeAsync();
-                  var combined = new Uint8Array(totalSize);
-                  var offset = 0;
-                  for (var i = 0; i < sliceData.length; i++) {
-                    var arr = new Uint8Array(sliceData[i]);
-                    combined.set(arr, offset);
-                    offset += arr.length;
-                  }
-                  var binary = '';
-                  var chunk = 8192;
-                  for (var j = 0; j < combined.length; j += chunk) {
-                    binary += String.fromCharCode.apply(null, combined.subarray(j, Math.min(j + chunk, combined.length)));
-                  }
-                  resolve(btoa(binary));
-                  return;
-                }
-                file.getSliceAsync(index, function(sliceResult) {
-                  if (sliceResult.status !== Office.AsyncResultStatus.Succeeded) {
-                    file.closeAsync();
-                    reject(new Error(sliceResult.error.message));
-                    return;
-                  }
-                  sliceData.push(sliceResult.value.data);
-                  totalSize += sliceResult.value.data.length;
-                  getNextSlice(index + 1);
-                });
-              }
-              getNextSlice(0);
-            });
-          });
-        `
-        const base64 = (await pool.sendCommand('executeCode', { code: exportCode }, target.ws, 120_000)) as string
-
-        const filename = filePath
-          ? decodeURIComponent(filePath.split('/').pop() || 'presentation.pptx')
-          : 'presentation.pptx'
-        const dest = join(tmpdir(), `pptbridge-${Date.now()}-${filename}`)
-        writeFileSync(dest, Buffer.from(base64, 'base64'))
-
-        localCopyCache.set(target.presentationId, { localPath: dest, revision: currentRevision })
-
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({ localPath: dest, source: 'exported', revision: currentRevision }),
-            },
-          ],
-        }
+        const source = isLocal ? 'local' : cachedBefore === localPath ? 'cached' : 'exported'
+        const result: Record<string, unknown> = { localPath, source }
+        if (cached) result.revision = cached.revision
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true }

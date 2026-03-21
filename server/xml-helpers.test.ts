@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   autoRegisterContentTypes,
   escapeXml,
+  extractLayoutsFromZip,
   extractParagraphs,
   extractSlideXmlFromZip,
   extractZipFiles,
@@ -297,6 +298,253 @@ describe('xml-helpers', () => {
 
     it('passes through normal text unchanged', () => {
       expect(escapeXml('Hello World 123')).toBe('Hello World 123')
+    })
+  })
+
+  describe('extractLayoutsFromZip', () => {
+    const MASTER_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>`
+
+    function makeLayoutXml(opts: { layoutType?: string; name?: string; shapes?: string }): string {
+      const typeAttr = opts.layoutType ? ` type="${opts.layoutType}"` : ''
+      const nameAttr = opts.name ? ` name="${opts.name}"` : ''
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+             xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"${typeAttr}>
+  <p:cSld${nameAttr}>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr/>
+      ${opts.shapes ?? ''}
+    </p:spTree>
+  </p:cSld>
+</p:sldLayout>`
+    }
+
+    async function buildZip(layoutXml: string): Promise<JSZip> {
+      const zip = new JSZip()
+      zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', MASTER_RELS)
+      zip.file('ppt/slideLayouts/slideLayout1.xml', layoutXml)
+      return zip
+    }
+
+    it('extracts basic placeholder type, idx, and name', async () => {
+      const xml = makeLayoutXml({
+        name: 'Two Content',
+        shapes: `
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="2" name="Title 1"/>
+              <p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="3" name="Content Placeholder 2"/>
+              <p:cNvSpPr/><p:nvPr><p:ph idx="1"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>`,
+      })
+      const layouts = await extractLayoutsFromZip(await buildZip(xml))
+      expect(layouts).toHaveLength(1)
+      expect(layouts[0]!.name).toBe('Two Content')
+      expect(layouts[0]!.placeholders).toHaveLength(2)
+
+      const title = layouts[0]!.placeholders[0]!
+      expect(title.type).toBe('title')
+      expect(title.idx).toBeUndefined()
+      expect(title.name).toBe('Title 1')
+
+      const content = layouts[0]!.placeholders[1]!
+      expect(content.type).toBe('obj') // default per OOXML spec
+      expect(content.idx).toBe(1)
+      expect(content.name).toBe('Content Placeholder 2')
+    })
+
+    it('extracts position and size from xfrm (EMU → points)', async () => {
+      const xml = makeLayoutXml({
+        name: 'With Position',
+        shapes: `
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="2" name="Title 1"/>
+              <p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr>
+              <a:xfrm>
+                <a:off x="838200" y="365125"/>
+                <a:ext cx="10515600" cy="1325563"/>
+              </a:xfrm>
+            </p:spPr>
+          </p:sp>`,
+      })
+      const layouts = await extractLayoutsFromZip(await buildZip(xml))
+      const ph = layouts[0]!.placeholders[0]!
+      // 838200 / 12700 = 66
+      expect(ph.left).toBe(66)
+      // 365125 / 12700 ≈ 28.75
+      expect(ph.top).toBe(28.75)
+      // 10515600 / 12700 ≈ 828
+      expect(ph.width).toBe(828)
+      // 1325563 / 12700 ≈ 104.38
+      expect(ph.height).toBe(104.38)
+    })
+
+    it('leaves position undefined when xfrm is missing (inherited from master)', async () => {
+      const xml = makeLayoutXml({
+        name: 'Inherited',
+        shapes: `
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="2" name="Title 1"/>
+              <p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>`,
+      })
+      const layouts = await extractLayoutsFromZip(await buildZip(xml))
+      const ph = layouts[0]!.placeholders[0]!
+      expect(ph.left).toBeUndefined()
+      expect(ph.top).toBeUndefined()
+      expect(ph.width).toBeUndefined()
+      expect(ph.height).toBeUndefined()
+    })
+
+    it('reads layout type from sldLayout element', async () => {
+      const xml = makeLayoutXml({ name: 'Two Objects', layoutType: 'twoObj' })
+      const layouts = await extractLayoutsFromZip(await buildZip(xml))
+      expect(layouts[0]!.type).toBe('twoObj')
+    })
+
+    it('leaves layout type undefined when not set', async () => {
+      const xml = makeLayoutXml({ name: 'Custom Layout' })
+      const layouts = await extractLayoutsFromZip(await buildZip(xml))
+      expect(layouts[0]!.type).toBeUndefined()
+    })
+
+    it('defaults placeholder type to "obj" per OOXML spec', async () => {
+      const xml = makeLayoutXml({
+        name: 'Default Type',
+        shapes: `
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="2" name="Content 1"/>
+              <p:cNvSpPr/><p:nvPr><p:ph idx="1"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>`,
+      })
+      const layouts = await extractLayoutsFromZip(await buildZip(xml))
+      expect(layouts[0]!.placeholders[0]!.type).toBe('obj')
+    })
+
+    it('reads sz attribute on placeholder', async () => {
+      const xml = makeLayoutXml({
+        name: 'Half Size',
+        shapes: `
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="2" name="Content 1"/>
+              <p:cNvSpPr/><p:nvPr><p:ph sz="half" idx="1"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>`,
+      })
+      const layouts = await extractLayoutsFromZip(await buildZip(xml))
+      expect(layouts[0]!.placeholders[0]!.sz).toBe('half')
+    })
+
+    it('reads description (alt text) from cNvPr', async () => {
+      const xml = makeLayoutXml({
+        name: 'With Description',
+        shapes: `
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="2" name="Hero Image" descr="16:9 landscape photo, no text overlay"/>
+              <p:cNvSpPr/><p:nvPr><p:ph type="pic" idx="3"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>`,
+      })
+      const layouts = await extractLayoutsFromZip(await buildZip(xml))
+      const ph = layouts[0]!.placeholders[0]!
+      expect(ph.type).toBe('pic')
+      expect(ph.name).toBe('Hero Image')
+      expect(ph.description).toBe('16:9 landscape photo, no text overlay')
+    })
+
+    it('filters utility placeholders (sldNum, ftr, dt, hdr)', async () => {
+      const xml = makeLayoutXml({
+        name: 'With Utilities',
+        shapes: `
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="2" name="Title 1"/>
+              <p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="3" name="Slide Number"/>
+              <p:cNvSpPr/><p:nvPr><p:ph type="sldNum" idx="12" sz="quarter"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="4" name="Footer"/>
+              <p:cNvSpPr/><p:nvPr><p:ph type="ftr" idx="3" sz="quarter"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="5" name="Date"/>
+              <p:cNvSpPr/><p:nvPr><p:ph type="dt" idx="10"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="6" name="Header"/>
+              <p:cNvSpPr/><p:nvPr><p:ph type="hdr" idx="11"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>`,
+      })
+      const layouts = await extractLayoutsFromZip(await buildZip(xml))
+      expect(layouts[0]!.placeholders).toHaveLength(1)
+      expect(layouts[0]!.placeholders[0]!.type).toBe('title')
+    })
+
+    it('skips non-placeholder shapes', async () => {
+      const xml = makeLayoutXml({
+        name: 'Mixed Shapes',
+        shapes: `
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="2" name="Title 1"/>
+              <p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>
+          <p:sp>
+            <p:nvSpPr>
+              <p:cNvPr id="5" name="Decorative Rectangle"/>
+              <p:cNvSpPr/><p:nvPr/>
+            </p:nvSpPr>
+            <p:spPr/>
+          </p:sp>`,
+      })
+      const layouts = await extractLayoutsFromZip(await buildZip(xml))
+      expect(layouts[0]!.placeholders).toHaveLength(1)
+      expect(layouts[0]!.placeholders[0]!.type).toBe('title')
     })
   })
 })

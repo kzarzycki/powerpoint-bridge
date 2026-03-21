@@ -114,7 +114,7 @@ var body2 = shapes.addTextBox("Description of the second feature.", { left: 585,
 body2.textFrame.textRange.font.size = 14;
 body2.textFrame.wordWrap = true;
 
-// Divider line (use slideWidth from list_slides/inspect_slide response)
+// Divider line (use slideWidth from inspect_deck/inspect_slide response)
 shapes.addLine("Straight", { left: 0, top: 180, width: slideWidth, height: 0 });
 
 await context.sync();
@@ -826,7 +826,7 @@ All values in **points** (1 pt = 1/72 inch).
 | Inches to points | inches * 72 |
 | cm to points | cm / 2.54 * 72 |
 
-**Always use actual slide dimensions** from `list_slides`/`inspect_slide` response (`slideWidth`, `slideHeight`).
+**Always use actual slide dimensions** from `inspect_deck`/`inspect_slide` response (`slideWidth`, `slideHeight`).
 
 Common slide sizes:
 - Standard 16:9: **960 × 540 pt** (13.33 × 7.5 in)

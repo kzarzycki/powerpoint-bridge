@@ -24636,9 +24636,9 @@ var require_load = __commonJS({
 var require_lib4 = __commonJS({
   "node_modules/jszip/lib/index.js"(exports2, module2) {
     "use strict";
-    function JSZip2() {
-      if (!(this instanceof JSZip2)) {
-        return new JSZip2();
+    function JSZip3() {
+      if (!(this instanceof JSZip3)) {
+        return new JSZip3();
       }
       if (arguments.length) {
         throw new Error("The constructor with parameters has been removed in JSZip 3.0, please check the upgrade guide.");
@@ -24647,7 +24647,7 @@ var require_lib4 = __commonJS({
       this.comment = null;
       this.root = "";
       this.clone = function() {
-        var newObj = new JSZip2();
+        var newObj = new JSZip3();
         for (var i in this) {
           if (typeof this[i] !== "function") {
             newObj[i] = this[i];
@@ -24656,16 +24656,16 @@ var require_lib4 = __commonJS({
         return newObj;
       };
     }
-    JSZip2.prototype = require_object();
-    JSZip2.prototype.loadAsync = require_load();
-    JSZip2.support = require_support();
-    JSZip2.defaults = require_defaults2();
-    JSZip2.version = "3.10.1";
-    JSZip2.loadAsync = function(content, options) {
-      return new JSZip2().loadAsync(content, options);
+    JSZip3.prototype = require_object();
+    JSZip3.prototype.loadAsync = require_load();
+    JSZip3.support = require_support();
+    JSZip3.defaults = require_defaults2();
+    JSZip3.version = "3.10.1";
+    JSZip3.loadAsync = function(content, options) {
+      return new JSZip3().loadAsync(content, options);
     };
-    JSZip2.external = require_external();
-    module2.exports = JSZip2;
+    JSZip3.external = require_external();
+    module2.exports = JSZip3;
   }
 });
 
@@ -49163,6 +49163,7 @@ var import_node_fs2 = require("node:fs");
 var import_node_os = require("node:os");
 var import_node_path2 = require("node:path");
 var import_xmldom2 = __toESM(require_lib(), 1);
+var import_jszip2 = __toESM(require_lib4(), 1);
 
 // server/chart-builder.ts
 var C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart";
@@ -49687,9 +49688,121 @@ async function extractSlideXmlFromZip(base643) {
 async function updateSlideXmlInZip(zip, xmlString) {
   return await updateZipFiles(zip, { [SLIDE_XML_PATH]: xmlString });
 }
+async function extractThemeFromZip(base643) {
+  const zip = await import_jszip.default.loadAsync(base643, { base64: true });
+  const themePath = Object.keys(zip.files).find((p) => p.startsWith("ppt/theme/") && p.endsWith(".xml"));
+  if (!themePath) throw new Error("No theme file found in zip");
+  const themeXml = await zip.file(themePath).async("string");
+  const doc = new import_xmldom.DOMParser().parseFromString(themeXml, "text/xml");
+  const clrScheme = doc.getElementsByTagNameNS(NS_A, "clrScheme")[0];
+  const colors = {};
+  if (clrScheme) {
+    for (let i = 0; i < clrScheme.childNodes.length; i++) {
+      const node = clrScheme.childNodes[i];
+      if (node.nodeType !== 1) continue;
+      const tag = node.localName;
+      const valElem = node.getElementsByTagNameNS(NS_A, "srgbClr")[0] ?? node.getElementsByTagNameNS(NS_A, "sysClr")[0];
+      if (valElem) {
+        colors[tag] = valElem.getAttribute("val") ?? valElem.getAttribute("lastClr") ?? "";
+      }
+    }
+  }
+  const fontScheme = doc.getElementsByTagNameNS(NS_A, "fontScheme")[0];
+  const majorLatin = fontScheme?.getElementsByTagNameNS(NS_A, "majorFont")[0]?.getElementsByTagNameNS(NS_A, "latin")[0];
+  const minorLatin = fontScheme?.getElementsByTagNameNS(NS_A, "minorFont")[0]?.getElementsByTagNameNS(NS_A, "latin")[0];
+  return {
+    name: clrScheme?.getAttribute("name") ?? "Unknown",
+    colors,
+    fonts: {
+      major: majorLatin?.getAttribute("typeface") ?? "",
+      minor: minorLatin?.getAttribute("typeface") ?? ""
+    }
+  };
+}
+var NS_RELS = "http://schemas.openxmlformats.org/package/2006/relationships";
+var LAYOUT_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout";
+var EMU_PER_PT = 12700;
+function emuToPoints(emu) {
+  return Math.round(emu / EMU_PER_PT * 100) / 100;
+}
+async function extractLayoutsFromZip(zip) {
+  const masterRelsPath = "ppt/slideMasters/_rels/slideMaster1.xml.rels";
+  const masterRelsFile = zip.file(masterRelsPath);
+  if (!masterRelsFile) throw new Error("No slide master rels found");
+  const masterRelsXml = await masterRelsFile.async("string");
+  const relsDoc = new import_xmldom.DOMParser().parseFromString(masterRelsXml, "text/xml");
+  const layoutTargets = [];
+  const rels = relsDoc.getElementsByTagNameNS(NS_RELS, "Relationship");
+  for (let i = 0; i < rels.length; i++) {
+    const rel = rels[i];
+    if (rel.getAttribute("Type") === LAYOUT_TYPE) {
+      const target = rel.getAttribute("Target") ?? "";
+      const resolved = target.replace("..", "ppt");
+      layoutTargets.push(resolved);
+    }
+  }
+  const layouts = [];
+  for (let i = 0; i < layoutTargets.length; i++) {
+    const layoutFile = zip.file(layoutTargets[i]);
+    if (!layoutFile) continue;
+    const layoutXml = await layoutFile.async("string");
+    const doc = new import_xmldom.DOMParser().parseFromString(layoutXml, "text/xml");
+    const sldLayout = doc.getElementsByTagNameNS(NS_P, "sldLayout")[0];
+    const layoutType = sldLayout?.getAttribute("type") ?? void 0;
+    const cSld = doc.getElementsByTagNameNS(NS_P, "cSld")[0];
+    const name = cSld?.getAttribute("name") ?? `Layout ${i}`;
+    const placeholders = [];
+    const shapes = doc.getElementsByTagNameNS(NS_P, "sp");
+    for (let j = 0; j < shapes.length; j++) {
+      const shape = shapes[j];
+      const nvSpPr = shape.getElementsByTagNameNS(NS_P, "nvSpPr")[0];
+      if (!nvSpPr) continue;
+      const nvPr = nvSpPr.getElementsByTagNameNS(NS_P, "nvPr")[0];
+      if (!nvPr) continue;
+      const ph = nvPr.getElementsByTagNameNS(NS_P, "ph")[0];
+      if (!ph) continue;
+      const phType = ph.getAttribute("type") || "obj";
+      if (phType === "sldNum" || phType === "ftr" || phType === "dt" || phType === "hdr") continue;
+      const info = { type: phType };
+      const idxStr = ph.getAttribute("idx");
+      if (idxStr) info.idx = Number.parseInt(idxStr, 10);
+      const szStr = ph.getAttribute("sz");
+      if (szStr) info.sz = szStr;
+      const cNvPr = nvSpPr.getElementsByTagNameNS(NS_P, "cNvPr")[0];
+      if (cNvPr) {
+        const shapeName = cNvPr.getAttribute("name");
+        if (shapeName) info.name = shapeName;
+        const descr = cNvPr.getAttribute("descr");
+        if (descr) info.description = descr;
+      }
+      const spPr = shape.getElementsByTagNameNS(NS_P, "spPr")[0];
+      const xfrm = spPr?.getElementsByTagNameNS(NS_A, "xfrm")[0];
+      if (xfrm) {
+        const off = xfrm.getElementsByTagNameNS(NS_A, "off")[0];
+        const ext = xfrm.getElementsByTagNameNS(NS_A, "ext")[0];
+        if (off) {
+          const x = off.getAttribute("x");
+          const y = off.getAttribute("y");
+          if (x) info.left = emuToPoints(Number.parseInt(x, 10));
+          if (y) info.top = emuToPoints(Number.parseInt(y, 10));
+        }
+        if (ext) {
+          const cx = ext.getAttribute("cx");
+          const cy = ext.getAttribute("cy");
+          if (cx) info.width = emuToPoints(Number.parseInt(cx, 10));
+          if (cy) info.height = emuToPoints(Number.parseInt(cy, 10));
+        }
+      }
+      placeholders.push(info);
+    }
+    layouts.push({ index: i, name, ...layoutType ? { type: layoutType } : {}, placeholders });
+  }
+  return layouts;
+}
 
 // server/tools.ts
 var localCopyCache = /* @__PURE__ */ new Map();
+var themeCache = /* @__PURE__ */ new Map();
 var sessionConcurrentWarnings = /* @__PURE__ */ new Map();
 function getConcurrentWarning(mcpSessionId, presentationId, activeSessions) {
   if (!mcpSessionId) return null;
@@ -49730,6 +49843,74 @@ function parseSlideRange(range) {
   return [...indices].sort((a, b) => a - b);
 }
 function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
+  async function getLocalCopyPath(connPool, target) {
+    const filePath = target.filePath;
+    if (filePath && !filePath.startsWith("http")) {
+      if (!(0, import_node_fs2.existsSync)(filePath)) throw new Error(`Local file not found: ${filePath}`);
+      return filePath;
+    }
+    const revCode = `
+      var p = context.presentation.properties;
+      p.load("revisionNumber");
+      await context.sync();
+      return p.revisionNumber;
+    `;
+    const currentRevision = await connPool.sendCommand("executeCode", { code: revCode }, target.ws);
+    const cached2 = localCopyCache.get(target.presentationId);
+    if (cached2 && cached2.revision === currentRevision && (0, import_node_fs2.existsSync)(cached2.localPath)) {
+      return cached2.localPath;
+    }
+    const exportCode = `
+      return new Promise(function(resolve, reject) {
+        Office.context.document.getFileAsync(Office.FileType.Compressed, { sliceSize: 4194304 }, function(result) {
+          if (result.status !== Office.AsyncResultStatus.Succeeded) {
+            reject(new Error(result.error.message));
+            return;
+          }
+          var file = result.value;
+          var sliceCount = file.sliceCount;
+          var sliceData = [];
+          var totalSize = 0;
+          function getNextSlice(index) {
+            if (index >= sliceCount) {
+              file.closeAsync();
+              var combined = new Uint8Array(totalSize);
+              var offset = 0;
+              for (var i = 0; i < sliceData.length; i++) {
+                var arr = new Uint8Array(sliceData[i]);
+                combined.set(arr, offset);
+                offset += arr.length;
+              }
+              var binary = '';
+              var chunk = 8192;
+              for (var j = 0; j < combined.length; j += chunk) {
+                binary += String.fromCharCode.apply(null, combined.subarray(j, Math.min(j + chunk, combined.length)));
+              }
+              resolve(btoa(binary));
+              return;
+            }
+            file.getSliceAsync(index, function(sliceResult) {
+              if (sliceResult.status !== Office.AsyncResultStatus.Succeeded) {
+                file.closeAsync();
+                reject(new Error(sliceResult.error.message));
+                return;
+              }
+              sliceData.push(sliceResult.value.data);
+              totalSize += sliceResult.value.data.length;
+              getNextSlice(index + 1);
+            });
+          }
+          getNextSlice(0);
+        });
+      });
+    `;
+    const base643 = await connPool.sendCommand("executeCode", { code: exportCode }, target.ws, 12e4);
+    const filename = filePath ? decodeURIComponent(filePath.split("/").pop() || "presentation.pptx") : "presentation.pptx";
+    const dest = (0, import_node_path2.join)((0, import_node_os.tmpdir)(), `pptbridge-${Date.now()}-${filename}`);
+    (0, import_node_fs2.writeFileSync)(dest, Buffer.from(base643, "base64"));
+    localCopyCache.set(target.presentationId, { localPath: dest, revision: currentRevision });
+    return dest;
+  }
   server.tool(
     "list_presentations",
     "Lists all PowerPoint presentations currently connected to the bridge server. Shows presentation IDs (file paths for saved files, generated IDs for unsaved) and connection status. Use this to find the presentationId to pass to other tools when multiple presentations are open.",
@@ -49752,9 +49933,35 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
       };
     }
   );
+  async function getLayoutUsage(connPool, ws) {
+    const code = `
+      var slides = context.presentation.slides;
+      slides.load("items");
+      await context.sync();
+      for (var i = 0; i < slides.items.length; i++) {
+        slides.items[i].layout.load("name,id");
+      }
+      await context.sync();
+      var seen = {};
+      var layouts = [];
+      for (var i = 0; i < slides.items.length; i++) {
+        var l = slides.items[i].layout;
+        if (!seen[l.id]) {
+          seen[l.id] = true;
+          layouts.push({ name: l.name, id: l.id, usedBySlides: [i] });
+        } else {
+          for (var j = 0; j < layouts.length; j++) {
+            if (layouts[j].id === l.id) { layouts[j].usedBySlides.push(i); break; }
+          }
+        }
+      }
+      return layouts;
+    `;
+    return await connPool.sendCommand("executeCode", { code }, ws);
+  }
   server.tool(
-    "list_slides",
-    "Lightweight deck index (~5 tokens/slide): returns slide dimensions (slideWidth, slideHeight) and all slides with index, ID, and shape count. Use as the first call to understand deck structure. For shape details, follow up with scan_slide or inspect_slide on specific slides.",
+    "inspect_deck",
+    "Deck overview: slide dimensions, theme (colors + fonts), and all slides with index, ID, and shape count. Use as the first call to understand deck structure. Theme is cached after the first call. For shape details, follow up with scan_slide or inspect_slide on specific slides. For available layouts, use inspect_layouts.",
     {
       presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
     },
@@ -49771,19 +49978,94 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
           for (var i = 0; i < slides.items.length; i++) {
             var slide = slides.items[i];
             slide.shapes.load("items");
+            slide.layout.load("name");
           }
           await context.sync();
           for (var i = 0; i < slides.items.length; i++) {
             var slide = slides.items[i];
-            output.push({ index: i, id: slide.id, shapeCount: slide.shapes.items.length });
+            output.push({ index: i, id: slide.id, layout: slide.layout.name, shapeCount: slide.shapes.items.length });
           }
           return { slideWidth: ps.slideWidth, slideHeight: ps.slideHeight, slides: output };
         `;
         const target = pool2.resolveTarget(presentationId);
         const result = await pool2.sendCommand("executeCode", { code }, target.ws);
+        let theme = themeCache.get(target.presentationId);
+        if (!theme) {
+          try {
+            const exported = await exportSlide(pool2, 0, target.ws);
+            theme = await extractThemeFromZip(exported.base64);
+            themeCache.set(target.presentationId, theme);
+          } catch {
+          }
+        }
+        const output = { ...result, ...theme ? { theme } : {} };
         const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
-        const text = JSON.stringify(result, null, 2) + (warning ?? "");
+        const text = JSON.stringify(output) + (warning ?? "");
         return { content: [{ type: "text", text }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
+    }
+  );
+  server.tool(
+    "inspect_layouts",
+    "Returns slide layouts with names, OOXML type (e.g. blank, twoObj, secHead), indices (for slides.add({ layoutIndex })), and detailed placeholders. Use `fields` to control which data is returned. By default reads all layouts from OOXML (complete list, requires file access \u2014 may take a moment on first call for cloud files). Set usedOnly to return only layouts assigned to existing slides (fast, Office.js only, no file access).",
+    {
+      fields: external_exports3.string().optional().describe(
+        'Comma-separated layout fields to include. Placeholders sub-fields in parens. Default: "index,name,type,usedBySlides,placeholders(type,idx,name)". All placeholder fields: type,idx,name,description,sz,left,top,width,height.'
+      ),
+      usedOnly: external_exports3.boolean().optional().describe(
+        "If true, return only layouts currently assigned to slides (fast, Office.js only). Default: false (all layouts from OOXML)."
+      ),
+      presentationId: external_exports3.string().optional().describe("Target presentation ID from list_presentations. Optional when only one presentation is connected.")
+    },
+    async ({ fields, usedOnly, presentationId }) => {
+      const DEFAULT_FIELDS = "index,name,type,usedBySlides,placeholders(type,idx,name)";
+      const fieldSpec = fields ?? DEFAULT_FIELDS;
+      const phMatch = fieldSpec.match(/placeholders\(([^)]+)\)/);
+      const phFields = phMatch ? new Set(phMatch[1].split(",").map((f) => f.trim())) : null;
+      const layoutFields = new Set(
+        fieldSpec.replace(/placeholders\([^)]*\)/, "placeholders").split(",").map((f) => f.trim())
+      );
+      function filterLayout(layout) {
+        const out = {};
+        for (const key of layoutFields) {
+          if (key === "placeholders" && phFields && Array.isArray(layout.placeholders)) {
+            out.placeholders = layout.placeholders.map((ph) => {
+              const filtered = {};
+              for (const f of phFields) {
+                if (ph[f] !== void 0) filtered[f] = ph[f];
+              }
+              return filtered;
+            });
+          } else if (key === "usedBySlides" && Array.isArray(layout[key]) && layout[key].length === 0) {
+          } else if (layout[key] !== void 0) {
+            out[key] = layout[key];
+          }
+        }
+        return out;
+      }
+      try {
+        const target = pool2.resolveTarget(presentationId);
+        if (usedOnly) {
+          const layouts2 = await getLayoutUsage(pool2, target.ws);
+          return { content: [{ type: "text", text: JSON.stringify({ layouts: layouts2, usedOnly: true }) }] };
+        }
+        const localPath = await getLocalCopyPath(pool2, target);
+        const fileData = (0, import_node_fs2.readFileSync)(localPath);
+        const zip = await import_jszip2.default.loadAsync(fileData);
+        const layouts = await extractLayoutsFromZip(zip);
+        try {
+          const usage = await getLayoutUsage(pool2, target.ws);
+          const usageByName = new Map(usage.map((u) => [u.name, u.usedBySlides]));
+          for (const layout of layouts) {
+            layout.usedBySlides = usageByName.get(layout.name) ?? [];
+          }
+        } catch {
+        }
+        const filtered = layouts.map((l) => filterLayout(l));
+        return { content: [{ type: "text", text: JSON.stringify({ layouts: filtered }) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
@@ -50223,93 +50505,14 @@ ${textParts.join("\n")}` : "\n(no text content)";
     async ({ presentationId }) => {
       try {
         const target = pool2.resolveTarget(presentationId);
-        const filePath = target.filePath;
-        if (filePath && !filePath.startsWith("http")) {
-          if (!(0, import_node_fs2.existsSync)(filePath)) {
-            return {
-              content: [{ type: "text", text: `Error: Local file not found: ${filePath}` }],
-              isError: true
-            };
-          }
-          return {
-            content: [{ type: "text", text: JSON.stringify({ localPath: filePath, source: "local" }) }]
-          };
-        }
-        const revCode = `
-          var p = context.presentation.properties;
-          p.load("revisionNumber");
-          await context.sync();
-          return p.revisionNumber;
-        `;
-        const currentRevision = await pool2.sendCommand("executeCode", { code: revCode }, target.ws);
+        const cachedBefore = localCopyCache.get(target.presentationId)?.localPath;
+        const localPath = await getLocalCopyPath(pool2, target);
+        const isLocal = target.filePath && !target.filePath.startsWith("http");
         const cached2 = localCopyCache.get(target.presentationId);
-        if (cached2 && cached2.revision === currentRevision && (0, import_node_fs2.existsSync)(cached2.localPath)) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({ localPath: cached2.localPath, source: "cached", revision: currentRevision })
-              }
-            ]
-          };
-        }
-        const exportCode = `
-          return new Promise(function(resolve, reject) {
-            Office.context.document.getFileAsync(Office.FileType.Compressed, { sliceSize: 4194304 }, function(result) {
-              if (result.status !== Office.AsyncResultStatus.Succeeded) {
-                reject(new Error(result.error.message));
-                return;
-              }
-              var file = result.value;
-              var sliceCount = file.sliceCount;
-              var sliceData = [];
-              var totalSize = 0;
-              function getNextSlice(index) {
-                if (index >= sliceCount) {
-                  file.closeAsync();
-                  var combined = new Uint8Array(totalSize);
-                  var offset = 0;
-                  for (var i = 0; i < sliceData.length; i++) {
-                    var arr = new Uint8Array(sliceData[i]);
-                    combined.set(arr, offset);
-                    offset += arr.length;
-                  }
-                  var binary = '';
-                  var chunk = 8192;
-                  for (var j = 0; j < combined.length; j += chunk) {
-                    binary += String.fromCharCode.apply(null, combined.subarray(j, Math.min(j + chunk, combined.length)));
-                  }
-                  resolve(btoa(binary));
-                  return;
-                }
-                file.getSliceAsync(index, function(sliceResult) {
-                  if (sliceResult.status !== Office.AsyncResultStatus.Succeeded) {
-                    file.closeAsync();
-                    reject(new Error(sliceResult.error.message));
-                    return;
-                  }
-                  sliceData.push(sliceResult.value.data);
-                  totalSize += sliceResult.value.data.length;
-                  getNextSlice(index + 1);
-                });
-              }
-              getNextSlice(0);
-            });
-          });
-        `;
-        const base643 = await pool2.sendCommand("executeCode", { code: exportCode }, target.ws, 12e4);
-        const filename = filePath ? decodeURIComponent(filePath.split("/").pop() || "presentation.pptx") : "presentation.pptx";
-        const dest = (0, import_node_path2.join)((0, import_node_os.tmpdir)(), `pptbridge-${Date.now()}-${filename}`);
-        (0, import_node_fs2.writeFileSync)(dest, Buffer.from(base643, "base64"));
-        localCopyCache.set(target.presentationId, { localPath: dest, revision: currentRevision });
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ localPath: dest, source: "exported", revision: currentRevision })
-            }
-          ]
-        };
+        const source = isLocal ? "local" : cachedBefore === localPath ? "cached" : "exported";
+        const result = { localPath, source };
+        if (cached2) result.revision = cached2.revision;
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
