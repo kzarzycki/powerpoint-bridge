@@ -50000,7 +50000,7 @@ function registerTools(server, pool2, getSessionId, getActiveSessionCount) {
         }
         const output = { ...result, ...theme ? { theme } : {} };
         const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount());
-        const text = JSON.stringify(output, null, 2) + (warning ?? "");
+        const text = JSON.stringify(output) + (warning ?? "");
         return { content: [{ type: "text", text }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

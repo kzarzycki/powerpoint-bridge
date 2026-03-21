@@ -304,7 +304,7 @@ export function registerTools(
 
         const output = { ...(result as Record<string, unknown>), ...(theme ? { theme } : {}) }
         const warning = getConcurrentWarning(getSessionId(), target.presentationId, getActiveSessionCount())
-        const text = JSON.stringify(output, null, 2) + (warning ?? '')
+        const text = JSON.stringify(output) + (warning ?? '')
         return { content: [{ type: 'text' as const, text }] }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
