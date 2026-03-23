@@ -35,8 +35,12 @@
       "description": "List all connected PowerPoint presentations"
     },
     {
-      "name": "list_slides",
-      "description": "Lightweight deck index: slide dimensions, IDs, and shape counts"
+      "name": "inspect_deck",
+      "description": "Deck overview: slide dimensions, theme (colors + fonts), and all slides with layout and shape count"
+    },
+    {
+      "name": "inspect_layouts",
+      "description": "Slide layouts with names, types, placeholders, and positions. Supports field selection."
     },
     {
       "name": "inspect_slide",
@@ -113,6 +117,10 @@
     {
       "name": "execute_officejs",
       "description": "Execute arbitrary Office.js code in the live presentation"
+    },
+    {
+      "name": "search_fluent_icons",
+      "description": "Search Microsoft Fluent UI icons by keyword"
     }
   ],
   "compatibility": {
