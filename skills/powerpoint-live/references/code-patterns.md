@@ -656,7 +656,7 @@ slide.background.fill.setSolidFill({ color: "1A1A1E" });
 ```
 
 ### Pattern 2: Master Background via OOXML
-Sets background for all slides via the slide master. Use in `edit_slide_master` for blank decks when establishing a theme. See the [Slide Master & Theming](#slide-master--theming) section above.
+Sets background for all slides via the slide master. Use in `edit_slide_zip` for blank decks when establishing a theme. See the [Slide Master & Theming](#slide-master--theming) section above.
 
 ### Pattern 3: Layout Loop
 Sets background on all layouts, propagating to any slide using those layouts. Use when you want all layouts to share a background but don't want to modify the master directly.
@@ -709,12 +709,12 @@ insert_image(source: result.svgUrl, sourceType: "url", slideIndex: 0, left: 100,
 
 ## Slide Master & Theming
 
-`edit_slide_master` receives `{ zip, markDirty }` — zip contains the full PPTX structure.
+Use `edit_slide_zip` (targeting the full PPTX structure) to edit slide masters and themes.
 
-**When to call `edit_slide_master`:**
-- Blank deck (default theme, no content) — MUST call first to establish theme
-- Custom-styled deck (default theme, has content) — do NOT call; existing slides define the style
-- Template/existing (non-default theme) — do NOT call unless user explicitly confirms a redesign
+**When to edit the slide master:**
+- Blank deck (default theme, no content) — MUST edit first to establish theme
+- Custom-styled deck (default theme, has content) — do NOT edit; existing slides define the style
+- Template/existing (non-default theme) — do NOT edit unless user explicitly confirms a redesign
 
 **Key files:**
 - `ppt/slideMasters/slideMaster1.xml` — master shapes, background, text styles

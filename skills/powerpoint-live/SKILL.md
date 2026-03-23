@@ -79,7 +79,6 @@ Key return formats to know:
 | `edit_slide_text` | The `xml` field takes raw OOXML paragraph XML, not executable code. Preserves `<a:bodyPr>` and `<a:lstStyle>` automatically. Must auto-size shapes after edit. |
 | `edit_slide_xml` | Two modes: `xml` (finished XML string) or `code` (JS that manipulates pre-parsed DOM server-side). Code mode preserves untouched attributes. Exported slide is ALWAYS `ppt/slides/slide1.xml` in the zip regardless of `slideIndex`. |
 | `format_shapes` | Uses `getTextFrameOrNullObject()` internally. Cannot set corner radius, borders, or gradients — use `edit_slide_xml` code mode for those. Color format: hex without `#`. |
-| `edit_slide_master` | The `zip` contains the full PPTX structure (not a single slide). `p:bg` must be first child of `p:cSld`. |
 | `verify_slides` | Must auto-size shapes first or stale dimensions cause missed overlaps. Table overflow needs API fix, not OOXML. |
 | `insert_image` | `color` param recolors SVG images only (e.g. Fluent UI icons from `search_fluent_icons`). Errors on non-SVG. `#` prefix required: `"#FF5733"`. |
 | `execute_officejs` | Loaded values are snapshots — don't branch on stale reads after writes without re-load + re-sync. |
@@ -102,7 +101,7 @@ Before editing, determine the deck type. This determines the entire approach.
 ### Case 1: Blank Deck
 **Detection:** `inspect_deck` shows only default slides, `inspect_slide` shows no custom content or colors.
 
-Use `edit_slide_master` FIRST to set up a complete theme before adding any slides. Do ALL of the following in a single `edit_slide_master` call:
+Use `edit_slide_zip` FIRST to set up a complete theme before adding any slides. Do ALL of the following in a single `edit_slide_zip` call (targeting the slide master PPTX structure):
 1. **Theme colors** — set the full `a:clrScheme`: dk1, dk2, lt1, lt2, and all six accents. Pick a cohesive palette suited to the topic and audience.
 2. **Theme fonts** — choose a heading font (`a:majorFont`) and body font (`a:minorFont`) that pair well. Avoid Calibri for both.
 3. **Master background** — set `p:bg` on the slide master.
@@ -173,7 +172,7 @@ Always inspect before modifying. Always verify after modifying. Every modified s
 For 3+ slides: build one slide at a time. Announce each slide before creating it ("Creating the Market Analysis slide..."). Use separate `execute_officejs` calls per slide -- this allows user feedback between slides.
 
 Recommended flow for a multi-slide deck:
-1. `edit_slide_master` -- define theme, colors, fonts, background, decorative shapes
+1. `edit_slide_zip` -- define theme, colors, fonts, background, decorative shapes (via slide master PPTX structure)
 2. Title slide -- add slide with "Title Slide" layout, fill placeholders
 3. Content slides -- one at a time, each in its own `execute_officejs` call
 4. `verify_slides` -- check all slides for overlaps and unused placeholders
@@ -339,9 +338,9 @@ Cannot do via Office.js — do not attempt:
 
 - Insert images with precise shape-level control (use `insert_image` tool — positions via Common API, not shape API)
 - Add animations or transitions
-- Apply shadows or effects via Office.js (solid fills only via Office.js; gradients possible via OOXML `a:gradFill` in `edit_slide_master`)
+- Apply shadows or effects via Office.js (solid fills only via Office.js; gradients possible via OOXML `a:gradFill` in `edit_slide_zip`)
 
-For charts, use `edit_slide_chart` (declarative) or `edit_slide_zip` (raw OOXML). Never approximate charts with geometric shapes. For slide masters/themes, use `edit_slide_master` for full theme editing (colors, fonts, backgrounds, decorative shapes).
+For charts, use `edit_slide_chart` (declarative) or `edit_slide_zip` (raw OOXML). Never approximate charts with geometric shapes. For slide masters/themes, use `edit_slide_zip` for full theme editing (colors, fonts, backgrounds, decorative shapes).
 
 ## Content & Design Rules
 
