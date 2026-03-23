@@ -163,7 +163,8 @@ brew install node
 | Tool | Description |
 |------|-------------|
 | `list_presentations` | Lists all connected presentations with their IDs and status |
-| `list_slides` | Lightweight deck index: slide dimensions, IDs, and shape counts |
+| `inspect_deck` | Deck overview: slide dimensions, theme (colors + fonts), and all slides with layout and shape count |
+| `inspect_layouts` | Slide layouts with names, types, placeholders, and positions. Supports field selection |
 | `inspect_slide` | Returns detailed shape info for a slide (text, positions, sizes, fills) |
 | `scan_slide` | Lightweight shape scanner: IDs, types, and positions |
 | `screenshot_slide` | Captures a visual screenshot of a slide as PNG (requires PowerPoint 16.96+) |
@@ -171,6 +172,7 @@ brew install node
 | `copy_slides` | Copies slides between two open presentations (data stays server-side, never in Claude context) |
 | `insert_image` | Inserts an image from a file path, URL, or base64 data onto a slide |
 | `get_local_copy` | Returns a local file path for the presentation (passthrough for local, exports cloud files to temp .pptx) |
+| `search_fluent_icons` | Search Microsoft Fluent UI icons by keyword and insert as SVG |
 | `execute_officejs` | Runs arbitrary Office.js code inside the live presentation |
 
 When multiple presentations are open, pass `presentationId` (from `list_presentations`) to target a specific one.
@@ -178,7 +180,7 @@ When multiple presentations are open, pass `presentationId` (from `list_presenta
 ## Limitations
 
 - **Limited image control** — Images inserted via Common API (`insert_image` tool), not shape API; positioning works but no shape-level manipulation after insertion
-- **No charts** — Office.js cannot create charts programmatically
+- **Charts via OOXML** — Charts created by injecting OOXML (`edit_slide_chart`), not via Office.js chart API
 - **No animations** — Not exposed in stable APIs
 - **Solid fills only** — No gradients, effects, or shadows
 - **Points for positioning** — All position/size values are in points (1 point = 1/72 inch)
