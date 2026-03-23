@@ -1,4 +1,6 @@
 #!/bin/bash
+# This script is for standalone/development use only.
+# Plugin users: run `claude plugin add kzarzycki/powerpoint-bridge` instead.
 set -e
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
