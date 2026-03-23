@@ -42,7 +42,7 @@ function generateKeywords(name: string): string {
 async function fetchJson(url: string): Promise<unknown> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
-    'User-Agent': 'powerpoint-bridge-icon-index-builder',
+    'User-Agent': 'powerpoint-mcp-icon-index-builder',
   }
   if (process.env.GITHUB_TOKEN) {
     headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`

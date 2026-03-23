@@ -51348,7 +51348,7 @@ return { success: true, shapesFormatted: ${shapes.length} };`;
 async function checkForUpdate(options) {
   const {
     currentVersion,
-    packageName = "powerpoint-bridge",
+    packageName = "powerpoint-mcp",
     registryUrl = "https://registry.npmjs.org",
     timeoutMs = 3e3
   } = options;
@@ -51389,7 +51389,7 @@ function runVersionCheck(currentVersion) {
       console.error(
         `
   Update available: v${result.current} \u2192 v${result.latest}
-  Run "npm update -g powerpoint-bridge" to upgrade
+  Run "npm update -g powerpoint-mcp" to upgrade
 `
       );
     }
@@ -51490,7 +51490,7 @@ var pool = new ConnectionPool();
 var mcpHttpTransports = /* @__PURE__ */ new Map();
 function createMcpServer(getSessionId, getActiveSessionCount) {
   const mcpServer = new McpServer({
-    name: "powerpoint-bridge",
+    name: "powerpoint-mcp",
     version: "0.1.0"
   });
   registerTools(mcpServer, pool, getSessionId, getActiveSessionCount);
@@ -51757,7 +51757,7 @@ var activeInterfaces = [
   httpActive && `HTTP(:${MCP_HTTP_PORT})`,
   bridgeActive && `Bridge(:${BRIDGE_PORT})`
 ].filter(Boolean).join(" + ");
-console.error(`powerpoint-bridge started [${activeInterfaces}]`);
+console.error(`powerpoint-mcp started [${activeInterfaces}]`);
 if (!bridgeActive) {
   console.error("  Note: Bridge not active. Tools requiring the add-in will return errors.");
 }

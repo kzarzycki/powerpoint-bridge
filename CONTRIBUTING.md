@@ -1,4 +1,4 @@
-# Contributing to PowerPoint Bridge
+# Contributing to PowerPoint MCP
 
 ## Prerequisites
 
@@ -8,8 +8,8 @@
 ## Development Setup
 
 ```bash
-git clone https://github.com/kzarzycki/powerpoint-bridge.git
-cd powerpoint-bridge
+git clone https://github.com/kzarzycki/powerpoint-mcp.git
+cd powerpoint-mcp
 npm install
 npm run sideload    # Sideload the add-in manifest
 # Restart PowerPoint after sideloading

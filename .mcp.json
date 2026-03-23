@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "powerpoint-bridge": {
+    "powerpoint-mcp": {
       "type": "http",
       "url": "http://localhost:3001/mcp"
     }

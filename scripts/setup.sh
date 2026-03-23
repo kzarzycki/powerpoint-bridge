@@ -1,11 +1,11 @@
 #!/bin/bash
 # This script is for standalone/development use only.
-# Plugin users: run `claude plugin add kzarzycki/powerpoint-bridge` instead.
+# Plugin users: run `claude plugin add kzarzycki/powerpoint-mcp` instead.
 set -e
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "=== PowerPoint Bridge Setup ==="
+echo "=== PowerPoint MCP Setup ==="
 echo ""
 
 # 1. Sideload add-in manifest (HTTP by default, honours BRIDGE_PORT)
@@ -14,8 +14,8 @@ node "$REPO_DIR/scripts/sideload.mjs"
 # 2. Install skill globally (skip if running as a Claude Code plugin)
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
   mkdir -p ~/.claude/skills
-  ln -sfn "$REPO_DIR/skills/powerpoint-live" ~/.claude/skills/powerpoint-live
-  echo "[skill] Installed globally at ~/.claude/skills/powerpoint-live"
+  ln -sfn "$REPO_DIR/skills/powerpoint-mcp" ~/.claude/skills/powerpoint-mcp
+  echo "[skill] Installed globally at ~/.claude/skills/powerpoint-mcp"
 else
   echo "[skill] Skipped (plugin auto-discovery handles this)"
 fi

@@ -27,7 +27,7 @@ fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
 "
 
 # Update SKILL.md frontmatter version
-SKILL_FILE="$REPO_DIR/skills/powerpoint-live/SKILL.md"
+SKILL_FILE="$REPO_DIR/skills/powerpoint-mcp/SKILL.md"
 if [ -f "$SKILL_FILE" ]; then
   sed -i.bak "s/^version: .*/version: $VERSION/" "$SKILL_FILE" && rm -f "$SKILL_FILE.bak"
 fi

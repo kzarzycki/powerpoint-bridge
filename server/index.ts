@@ -163,7 +163,7 @@ const mcpHttpTransports = new Map<string, StreamableHTTPServerTransport>()
 
 function createMcpServer(getSessionId: () => string | undefined, getActiveSessionCount: () => number): McpServer {
   const mcpServer = new McpServer({
-    name: 'powerpoint-bridge',
+    name: 'powerpoint-mcp',
     version: '0.1.0',
   })
   registerTools(mcpServer, pool, getSessionId, getActiveSessionCount)
@@ -504,7 +504,7 @@ const activeInterfaces = [
   .filter(Boolean)
   .join(' + ')
 
-console.error(`powerpoint-bridge started [${activeInterfaces}]`)
+console.error(`powerpoint-mcp started [${activeInterfaces}]`)
 if (!bridgeActive) {
   console.error('  Note: Bridge not active. Tools requiring the add-in will return errors.')
 }

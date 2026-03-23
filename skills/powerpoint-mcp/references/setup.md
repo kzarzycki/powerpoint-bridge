@@ -5,7 +5,7 @@
 Install as a Claude Code plugin — this is the simplest way to get started:
 
 ```bash
-claude plugin add kzarzycki/powerpoint-bridge
+claude plugin add kzarzycki/powerpoint-mcp
 ```
 
 This gives you:
@@ -35,8 +35,8 @@ If you're developing on the bridge itself or prefer not to use the plugin:
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/kzarzycki/powerpoint-bridge.git
-cd powerpoint-bridge
+git clone https://github.com/kzarzycki/powerpoint-mcp.git
+cd powerpoint-mcp
 npm install
 ```
 
@@ -53,14 +53,14 @@ Restart PowerPoint after sideloading.
 Start the server once in HTTP mode — it stays running across Claude Code sessions:
 
 ```bash
-nohup node --experimental-strip-types ./server/index.ts --http --bridge > /tmp/powerpoint-bridge.log 2>&1 &
+nohup node --experimental-strip-types ./server/index.ts --http --bridge > /tmp/powerpoint-mcp.log 2>&1 &
 ```
 
 To restart after code changes:
 
 ```bash
 pkill -f "server/index.ts"
-nohup node --experimental-strip-types ./server/index.ts --http --bridge > /tmp/powerpoint-bridge.log 2>&1 &
+nohup node --experimental-strip-types ./server/index.ts --http --bridge > /tmp/powerpoint-mcp.log 2>&1 &
 ```
 
 HTTP mode is preferred over STDIO for development because:
@@ -75,7 +75,7 @@ Create or merge into the project's `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "powerpoint-bridge": {
+    "powerpoint-mcp": {
       "type": "http",
       "url": "http://localhost:3001/mcp"
     }
@@ -91,9 +91,9 @@ If `.mcp.json` already exists with other servers, merge — do not overwrite.
 ```json
 {
   "mcpServers": {
-    "powerpoint-bridge": {
+    "powerpoint-mcp": {
       "command": "node",
-      "args": ["<path-to-powerpoint-bridge>/dist/index.cjs", "--stdio", "--bridge"]
+      "args": ["<path-to-powerpoint-mcp>/dist/index.cjs", "--stdio", "--bridge"]
     }
   }
 }

@@ -1,11 +1,11 @@
-# PowerPoint Bridge
+# PowerPoint MCP
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen)](https://nodejs.org)
 
 An MCP server that lets AI assistants manipulate **live, open** PowerPoint presentations on macOS via Office.js APIs.
 
-Unlike file-based tools (python-pptx), PowerPoint Bridge works with presentations that are already open — changes appear instantly, and you keep full access to PowerPoint's UI, animations, and formatting.
+Unlike file-based tools (python-pptx), PowerPoint MCP works with presentations that are already open — changes appear instantly, and you keep full access to PowerPoint's UI, animations, and formatting.
 
 ## Installation
 
@@ -14,8 +14,8 @@ Unlike file-based tools (python-pptx), PowerPoint Bridge works with presentation
 Zero-config install from the marketplace. MCP auto-starts, add-in auto-sideloads, skill included.
 
 ```
-/plugin marketplace add kzarzycki/powerpoint-bridge
-/plugin install powerpoint-bridge@powerpoint-bridge
+/plugin marketplace add kzarzycki/powerpoint-mcp
+/plugin install powerpoint-mcp@powerpoint-mcp
 ```
 
 Then restart PowerPoint, open a presentation, and click the bridge add-in in the ribbon.
@@ -25,7 +25,7 @@ Then restart PowerPoint, open a presentation, and click the bridge add-in in the
 Run as an MCP server via npx (no install needed):
 
 ```bash
-npx powerpoint-bridge --stdio --bridge
+npx powerpoint-mcp --stdio --bridge
 ```
 
 Then configure your MCP client:
@@ -34,9 +34,9 @@ Then configure your MCP client:
 ```json
 {
   "mcpServers": {
-    "powerpoint-bridge": {
+    "powerpoint-mcp": {
       "command": "npx",
-      "args": ["-y", "powerpoint-bridge", "--stdio", "--bridge"]
+      "args": ["-y", "powerpoint-mcp", "--stdio", "--bridge"]
     }
   }
 }
@@ -46,10 +46,10 @@ Then configure your MCP client:
 ```json
 {
   "mcpServers": {
-    "powerpoint-bridge": {
+    "powerpoint-mcp": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "powerpoint-bridge", "--stdio", "--bridge"]
+      "args": ["-y", "powerpoint-mcp", "--stdio", "--bridge"]
     }
   }
 }
@@ -59,9 +59,9 @@ Then configure your MCP client:
 ```json
 {
   "mcpServers": {
-    "powerpoint-bridge": {
+    "powerpoint-mcp": {
       "command": "npx",
-      "args": ["-y", "powerpoint-bridge", "--stdio", "--bridge"]
+      "args": ["-y", "powerpoint-mcp", "--stdio", "--bridge"]
     }
   }
 }
@@ -71,9 +71,9 @@ Then configure your MCP client:
 ```json
 {
   "servers": {
-    "powerpoint-bridge": {
+    "powerpoint-mcp": {
       "command": "npx",
-      "args": ["-y", "powerpoint-bridge", "--stdio", "--bridge"]
+      "args": ["-y", "powerpoint-mcp", "--stdio", "--bridge"]
     }
   }
 }
@@ -83,25 +83,25 @@ Then configure your MCP client:
 ```json
 {
   "mcpServers": {
-    "powerpoint-bridge": {
+    "powerpoint-mcp": {
       "command": "npx",
-      "args": ["-y", "powerpoint-bridge", "--stdio", "--bridge"]
+      "args": ["-y", "powerpoint-mcp", "--stdio", "--bridge"]
     }
   }
 }
 ```
 
-> **Note:** The PowerPoint add-in must still be sideloaded separately. Run `npx powerpoint-bridge --sideload` or see [Troubleshooting](#troubleshooting).
+> **Note:** The PowerPoint add-in must still be sideloaded separately. Run `npx powerpoint-mcp --sideload` or see [Troubleshooting](#troubleshooting).
 
 ### Claude Desktop Extension
 
 Build and install as a one-click `.mcpb` extension (from source):
 
 ```bash
-git clone https://github.com/kzarzycki/powerpoint-bridge.git
-cd powerpoint-bridge
+git clone https://github.com/kzarzycki/powerpoint-mcp.git
+cd powerpoint-mcp
 npm install && npm run build:mcpb
-open powerpoint-bridge-*.mcpb   # opens Claude Desktop installer
+open powerpoint-mcp-*.mcpb   # opens Claude Desktop installer
 ```
 
 The extension auto-starts the bridge and auto-sideloads the add-in. Restart PowerPoint after first install.
@@ -113,8 +113,8 @@ The extension auto-starts the bridge and auto-sideloads the add-in. Restart Powe
 ### From source (development)
 
 ```bash
-git clone https://github.com/kzarzycki/powerpoint-bridge.git
-cd powerpoint-bridge
+git clone https://github.com/kzarzycki/powerpoint-mcp.git
+cd powerpoint-mcp
 npm install
 npm run sideload     # copies manifest to PowerPoint's add-in folder
 npm start            # starts bridge server + MCP HTTP transport
@@ -124,7 +124,7 @@ Then restart PowerPoint, open a presentation, and click the bridge add-in in the
 
 ## Motivation
 
-This project was inspired by the [Claude in PowerPoint](https://support.anthropic.com/en/articles/11360939-using-claude-in-powerpoint) add-in. The first time I tried it, I was amazed — it edits live, open decks via Office.js, and the results are far better than file-based pptx tools. But it only works inside the add-in, which means no access to CLAUDE.md, skills, or any other Claude Code features. PowerPoint Bridge brings those same Office.js capabilities to Claude Code (and any MCP client) so you get live editing with the full power of your coding environment.
+This project was inspired by the [Claude in PowerPoint](https://support.anthropic.com/en/articles/11360939-using-claude-in-powerpoint) add-in. The first time I tried it, I was amazed — it edits live, open decks via Office.js, and the results are far better than file-based pptx tools. But it only works inside the add-in, which means no access to CLAUDE.md, skills, or any other Claude Code features. PowerPoint MCP brings those same Office.js capabilities to Claude Code (and any MCP client) so you get live editing with the full power of your coding environment.
 
 ## Architecture
 
@@ -145,7 +145,7 @@ Three components in one repo:
 
 - **`addin/`** — Office.js taskpane add-in that loads inside PowerPoint and connects as a WebSocket client
 - **`server/`** — Node.js bridge server: HTTP + WS + MCP transport (HTTPS/WSS opt-in via `BRIDGE_TLS=1`)
-- **`skills/powerpoint-live/`** — Claude Code skill with tool docs, code patterns, and setup guide (auto-installed with plugin)
+- **`skills/powerpoint-mcp/`** — Claude Code skill with tool docs, code patterns, and setup guide (auto-installed with plugin)
 - **`certs/`** — Optional local TLS certificates for HTTPS mode (generated, gitignored)
 
 ## Prerequisites
@@ -187,7 +187,7 @@ When multiple presentations are open, pass `presentationId` (from `list_presenta
 
 ## Security
 
-PowerPoint Bridge runs entirely on localhost:
+PowerPoint MCP runs entirely on localhost:
 
 - The bridge server binds to `localhost:8080` (HTTP) or `localhost:8443` (HTTPS with `BRIDGE_TLS=1`)
 - MCP transport is either STDIO (no network port) or HTTP on `localhost:3001`
@@ -198,7 +198,7 @@ PowerPoint Bridge runs entirely on localhost:
 ## Troubleshooting
 
 **Add-in not appearing in PowerPoint**
-1. Run `npm run sideload` (or `npx powerpoint-bridge --sideload`) and restart PowerPoint
+1. Run `npm run sideload` (or `npx powerpoint-mcp --sideload`) and restart PowerPoint
 2. Check that the file exists: `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/manifest.xml`
 
 **Add-in shows "Disconnected"**

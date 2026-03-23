@@ -1,11 +1,11 @@
 {
-  "name": "powerpoint-bridge",
-  "version": "0.4.0",
+  "name": "powerpoint-mcp",
+  "version": "0.5.0",
   "description": "MCP server that lets AI assistants manipulate live PowerPoint presentations via Office.js",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "powerpoint-bridge": "./dist/index.js"
+    "powerpoint-mcp": "./dist/index.js"
   },
   "files": [
     "dist/",
@@ -20,11 +20,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kzarzycki/powerpoint-bridge.git"
+    "url": "git+https://github.com/kzarzycki/powerpoint-mcp.git"
   },
-  "homepage": "https://github.com/kzarzycki/powerpoint-bridge#readme",
+  "homepage": "https://github.com/kzarzycki/powerpoint-mcp#readme",
   "bugs": {
-    "url": "https://github.com/kzarzycki/powerpoint-bridge/issues"
+    "url": "https://github.com/kzarzycki/powerpoint-mcp/issues"
   },
   "keywords": [
     "mcp",

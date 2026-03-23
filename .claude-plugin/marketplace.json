@@ -1,11 +1,11 @@
 {
-  "name": "powerpoint-bridge",
+  "name": "powerpoint-mcp",
   "owner": {
     "name": "Krzysztof Zarzycki"
   },
   "plugins": [
     {
-      "name": "powerpoint-bridge",
+      "name": "powerpoint-mcp",
       "source": "./",
       "description": "Live-edit open PowerPoint presentations via Office.js MCP bridge"
     }

@@ -25,7 +25,7 @@ export interface VersionCheckResult {
 export async function checkForUpdate(options: VersionCheckOptions): Promise<VersionCheckResult | null> {
   const {
     currentVersion,
-    packageName = 'powerpoint-bridge',
+    packageName = 'powerpoint-mcp',
     registryUrl = 'https://registry.npmjs.org',
     timeoutMs = 3000,
   } = options
@@ -82,7 +82,7 @@ export function runVersionCheck(currentVersion: string): void {
     if (result?.updateAvailable) {
       console.error(
         `\n  Update available: v${result.current} → v${result.latest}` +
-          '\n  Run "npm update -g powerpoint-bridge" to upgrade\n',
+          '\n  Run "npm update -g powerpoint-mcp" to upgrade\n',
       )
     }
   })
