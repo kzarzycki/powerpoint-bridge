@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sf http://localhost:3001/mcp > /dev/null 2>&1 || nohup node ${CLAUDE_PLUGIN_ROOT}/dist/index.cjs --http --bridge > /tmp/powerpoint-mcp.log 2>&1 &"
+          }
+        ]
+      }
+    ]
+  }
+}
