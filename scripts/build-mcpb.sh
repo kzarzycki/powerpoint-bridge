@@ -4,7 +4,7 @@ set -e
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STAGE_DIR="$REPO_DIR/dist/mcpb-stage"
 
-echo "=== Building PowerPoint Bridge .mcpb ==="
+echo "=== Building PowerPoint MCP .mcpb ==="
 
 # 1. Build CJS bundle
 echo "[build] Building self-contained CJS bundle..."
@@ -31,7 +31,7 @@ cp "$REPO_DIR/addin/assets/icon-80.png" "$STAGE_DIR/icon.png"
 
 # 6. Pack as .mcpb
 VERSION=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('$REPO_DIR/package.json','utf8')).version)")
-MCPB_FILE="$REPO_DIR/powerpoint-bridge-v${VERSION}.mcpb"
+MCPB_FILE="$REPO_DIR/powerpoint-mcp-v${VERSION}.mcpb"
 
 echo "[pack] Creating $MCPB_FILE..."
 cd "$STAGE_DIR"

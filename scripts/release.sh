@@ -42,4 +42,4 @@ git push origin "$BRANCH" --follow-tags
 echo ""
 echo "=== Release pushed ==="
 echo "GitHub Actions will now build the .mcpb and create the GitHub Release."
-echo "Monitor at: https://github.com/kzarzycki/powerpoint-bridge/actions"
+echo "Monitor at: https://github.com/kzarzycki/powerpoint-mcp/actions"

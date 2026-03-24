@@ -34,7 +34,7 @@ describe('isNewer', () => {
 describe('checkForUpdate', () => {
   const baseOpts: VersionCheckOptions = {
     currentVersion: '0.4.0',
-    packageName: 'powerpoint-bridge',
+    packageName: 'powerpoint-mcp',
     timeoutMs: 1000,
   }
 
@@ -108,7 +108,7 @@ describe('checkForUpdate', () => {
     } as Response)
 
     await checkForUpdate({ ...baseOpts, registryUrl: 'https://custom.registry.com' })
-    expect(fetch).toHaveBeenCalledWith('https://custom.registry.com/powerpoint-bridge/latest', expect.any(Object))
+    expect(fetch).toHaveBeenCalledWith('https://custom.registry.com/powerpoint-mcp/latest', expect.any(Object))
   })
 })
 

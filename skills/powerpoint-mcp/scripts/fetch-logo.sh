@@ -7,27 +7,27 @@
 #   3. Brandfetch search — company/brand logos (PNG, needs BRANDFETCH_CLIENT_ID)
 #
 # Usage:
-#   ~/.claude/skills/powerpoint-live/scripts/fetch-logo.sh [OPTIONS] QUERY [QUERY...]
+#   ~/.claude/skills/powerpoint-mcp/scripts/fetch-logo.sh [OPTIONS] QUERY [QUERY...]
 #
 # Options:
 #   --icon                    Prefer icon variant (no text, just symbol)
 #   --size N                  Max width/height for Brandfetch (default: 400)
 #   --format png|svg          Preferred format (default: svg for gilbarbara, png for brandfetch)
-#   --outdir DIR              Output directory (default: ~/.cache/powerpoint-live/logos/)
+#   --outdir DIR              Output directory (default: ~/.cache/powerpoint-mcp/logos/)
 #   --search-only             List matches without downloading
 #   --source gl|lfai|bf|auto  Force source: gl=gilbarbara, lfai=LF AI, bf=brandfetch, auto=try all (default: auto)
 #
 # Examples:
-#   ~/.claude/skills/powerpoint-live/scripts/fetch-logo.sh dbt
-#   ~/.claude/skills/powerpoint-live/scripts/fetch-logo.sh --icon Airflow
-#   ~/.claude/skills/powerpoint-live/scripts/fetch-logo.sh "AWS MSK" Kubernetes Snowflake
-#   ~/.claude/skills/powerpoint-live/scripts/fetch-logo.sh --search-only dataflow
-#   ~/.claude/skills/powerpoint-live/scripts/fetch-logo.sh --source bf "dbt Labs"
+#   ~/.claude/skills/powerpoint-mcp/scripts/fetch-logo.sh dbt
+#   ~/.claude/skills/powerpoint-mcp/scripts/fetch-logo.sh --icon Airflow
+#   ~/.claude/skills/powerpoint-mcp/scripts/fetch-logo.sh "AWS MSK" Kubernetes Snowflake
+#   ~/.claude/skills/powerpoint-mcp/scripts/fetch-logo.sh --search-only dataflow
+#   ~/.claude/skills/powerpoint-mcp/scripts/fetch-logo.sh --source bf "dbt Labs"
 
 set -euo pipefail
 
 # Global cache — shared across all projects
-CACHE_DIR="$HOME/.cache/powerpoint-live"
+CACHE_DIR="$HOME/.cache/powerpoint-mcp"
 
 # Defaults
 ICON_MODE=false

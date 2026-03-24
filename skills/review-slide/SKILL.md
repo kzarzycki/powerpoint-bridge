@@ -9,7 +9,7 @@ description: >
 context: fork
 agent: Explore
 model: opus
-allowed-tools: mcp__powerpoint-bridge__screenshot_slide, mcp__powerpoint-bridge__list_presentations
+allowed-tools: mcp__powerpoint-mcp__screenshot_slide, mcp__powerpoint-mcp__list_presentations
 argument-hint: <slide-index> [presentation-hint]
 ---
 

@@ -1,4 +1,4 @@
-/* PowerPoint Bridge — WebSocket client */
+/* PowerPoint MCP — WebSocket client */
 
 var ws = null
 var reconnectAttempt = 0
